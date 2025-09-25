@@ -85,7 +85,7 @@ The **merchant** wants to understand which of their sales were processed by this
 The **merchant** wants to know if customers with a higher "tier" e-wallet account spend more at their store.
 
 *   **Action:** The merchant joins their `users` table with the provider's `provider_users` table, their own `orders` table, and the provider's `transactions` table.
-*   **Join Keys:** `email`, `user_id`, and `order_id`
+*   **Join Keys:** `hashed_email`, `user_id`, and `order_id`
 *   **DCR Analysis Rule:** **Aggregation with Threshold** - This query groups data by a dimension (`account_tier`) and calculates aggregate metrics (`AVG`, `COUNT`). The DCR will automatically apply aggregation thresholds, filtering out any groups with fewer than the minimum required number of users (typically 50+) to prevent re-identification of individuals.
 *   **Example Query:**
     ```sql
@@ -99,7 +99,7 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
     FROM
         `your-merchant-project.merchant_provider.users` AS u
     JOIN
-        `your-provider-project.ewallet_provider.provider_users` AS p ON u.email = p.email
+        `your-provider-project.ewallet_provider.provider_users` AS p ON u.hashed_email = p.hashed_email
     JOIN
         `your-merchant-project.merchant_provider.orders` AS o ON u.id = o.user_id
     JOIN
@@ -116,7 +116,7 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
 The **merchant** wants to identify high-trust customers.
 
 *   **Action:** The merchant joins their `users` table with the provider's `provider_users` table to analyze the `is_verified_user` flag.
-*   **Join Key:** `email`
+*   **Join Key:** `hashed_email`
 *   **DCR Analysis Rule:** **Aggregation with Threshold** - This query groups users by their verification status and counts them. Like Use Case 2, the DCR will apply aggregation thresholds to ensure that both groups (verified and unverified) have sufficient user counts to protect individual privacy.
 *   **Example Query:**
     ```sql
@@ -129,7 +129,7 @@ The **merchant** wants to identify high-trust customers.
     FROM
         `your-merchant-project.merchant_provider.users` AS u
     JOIN
-        `your-provider-project.ewallet_provider.provider_users` AS p ON u.email = p.email
+        `your-provider-project.ewallet_provider.provider_users` AS p ON u.hashed_email = p.hashed_email
     GROUP BY 1
     HAVING COUNT(DISTINCT u.id) >= 50;  -- Example threshold for demo purposes
     ```
@@ -141,7 +141,7 @@ The **merchant** wants to identify high-trust customers.
 The **e-wallet provider** wants to learn more about their customers who shop at this merchant.
 
 *   **Action:** The provider joins their `provider_users` table with the merchant's `users` table.
-*   **Join Key:** `email`
+*   **Join Key:** `hashed_email`
 *   **DCR Analysis Rule:** **List Overlap** - This query identifies the intersection of the provider's customers and the merchant's customers, returning enriched demographic data for the overlapping users. The DCR ensures that only users who exist in both datasets are returned, protecting the privacy of non-overlapping customers from both sides.
 *   **Example Query:**
     ```sql
@@ -156,7 +156,7 @@ The **e-wallet provider** wants to learn more about their customers who shop at 
     FROM
         `your-provider-project.ewallet_provider.provider_users` AS p
     JOIN
-        `your-merchant-project.merchant_provider.users` AS m ON p.email = m.email;
+        `your-merchant-project.merchant_provider.users` AS m ON p.hashed_email = m.hashed_email;
     ```
 
 ---
@@ -224,7 +224,7 @@ This section demonstrates a realistic and powerful machine learning use case whe
     FROM
       `your-provider-project.ewallet_provider.provider_users` p
     JOIN
-      `your-merchant-project.merchant_provider.users` m ON p.email = m.email;
+      `your-merchant-project.merchant_provider.users` m ON p.hashed_email = m.hashed_email;
     ```
 
 *   **Example `ML.PREDICT` Query (using inference data):**
@@ -249,7 +249,7 @@ This section demonstrates a realistic and powerful machine learning use case whe
           FROM
             `your-provider-project.ewallet_provider.provider_users_inference` p
           JOIN
-            `your-merchant-project.merchant_provider.users_inference` m ON p.email = m.email
+            `your-merchant-project.merchant_provider.users_inference` m ON p.hashed_email = m.hashed_email
         )
       );
     ```
@@ -272,11 +272,42 @@ This section demonstrates a realistic and powerful machine learning use case whe
 
 ### Execution
 
-Run the main script from the project's root directory. This single command will generate **both** the training and inference datasets.
+Run the main script from the project's root directory. You can control which steps to execute using the `--step` argument.
+
+#### Run Everything (Default)
+This single command will generate **both** the training and inference datasets, then add secure hashed email columns:
 
 ```sh
 uv run python -m dcr_data_generator.main --merchant-project-id your-merchant-project --provider-project-id your-provider-project
 ```
+
+#### Run Only Data Generation
+To generate only the raw datasets with email columns (useful for demonstrating the "before" state):
+
+```sh
+uv run python -m dcr_data_generator.main --merchant-project-id your-merchant-project --provider-project-id your-provider-project --step generate
+```
+
+#### Run Only Hashing
+To add secure hashed email columns to existing tables (useful for demonstrating the security transformation):
+
+```sh
+uv run python -m dcr_data_generator.main --merchant-project-id your-merchant-project --provider-project-id your-provider-project --step hash
+```
+
+This step-by-step approach is perfect for demos where you want to show the progression from raw PII data to secure, joinable identifiers.
+
+### Note on Data Quality
+
+When you run the hashing step, you may notice that the number of unique hashes is slightly less than the total number of rows in the merchant's tables. For example:
+
+```
+Processing Merchant users (training): 1143 total rows, 1140 unique hashes
+```
+
+This is expected and demonstrates a real-world data quality issue: the source `thelook_ecommerce` dataset contains different user IDs that share the same email address. The merchant's snapshot preserves this data as-is (de-duplicating only by `user_id`), while the provider's data generation logic correctly de-duplicates by `email`, ensuring one record per unique email address.
+
+This discrepancy serves as an excellent talking point during demos, highlighting the importance of robust data preparation and quality checks in data clean room implementations.
 
 ## 5. Generated Schemas
 
