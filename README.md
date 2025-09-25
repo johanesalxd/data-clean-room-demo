@@ -9,12 +9,10 @@ The script first creates a clean, isolated snapshot of source data from `bigquer
 The data generation pipeline is a two-step process designed for robustness and data integrity.
 
 **Step 1: Create Merchant Snapshot**
-A clean, de-duplicated copy of the merchant's data is created in a new `merchant_provider` dataset within your GCP project. This involves:
-1.  Copying `orders` and `order_items` for a specific date.
-2.  Identifying the unique users from those orders and copying only their most recent, de-duplicated records into a new `users` table.
+A clean, de-duplicated copy of the merchant's data is created in a new `merchant_provider` dataset within your GCP project. This involves copying data for a specific date and de-duplicating user records.
 
 **Step 2: Generate E-Wallet Provider Data**
-The script then reads from the clean `merchant_provider` snapshot to generate the `ewallet_provider` dataset, which contains the synthetic data for the payment provider. This process is run twice to create separate datasets for training and inference.
+The script then reads from the clean snapshot to generate the `ewallet_provider` dataset. This process is run twice with different dates to create separate datasets for training and inference.
 
 ```mermaid
 graph TD
@@ -33,6 +31,9 @@ graph TD
             SnapshotUsers(users)
             SnapshotOrders(orders)
             SnapshotOrderItems(order_items)
+            SnapshotUsersInf(users_inference)
+            SnapshotOrdersInf(orders_inference)
+            SnapshotOrderItemsInf(order_items_inference)
         end
 
         subgraph ProviderDS [ewallet_provider]
@@ -51,9 +52,9 @@ graph TD
     PublicOrderItems --> SnapshotOrderItems
 ```
 
-## 2. Data Clean Room Use Cases
+## 2. Data Clean Room Use Cases (Analytics)
 
-This simulation enables several powerful use cases. All example queries should be run against the tables created in **your own GCP project**.
+This simulation enables several powerful analytics use cases. All example queries should be run against the tables created in **your own GCP project**.
 
 ---
 
@@ -61,7 +62,7 @@ This simulation enables several powerful use cases. All example queries should b
 
 The **merchant** wants to understand which of their sales were processed by this specific e-wallet provider.
 
-*   **Action:** The merchant joins their `orders` table (from the `merchant_provider` snapshot) with the provider's `transactions` table.
+*   **Action:** The merchant joins their `orders` table with the provider's `transactions` table.
 *   **Join Key:** `order_id`
 *   **Example Query:**
     ```sql
@@ -108,50 +109,147 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
 
 ---
 
-### Use Case 3: BQML - Predicting Customer Value (Merchant's Goal)
+### Use Case 3: Trust and Fraud Analysis (Merchant's Goal)
 
-The **merchant** wants to predict the lifetime value (LTV) of their customers by using the provider's data as predictive features.
+The **merchant** wants to identify high-trust customers.
 
-*   **Action:** Train a regression model using the combined data.
-*   **Example `CREATE MODEL` Query (using training data):**
+*   **Action:** The merchant uses the `is_verified_user` flag from the provider's data as a signal of trustworthiness.
+*   **Join Key:** `email`
+*   **Example Query:**
     ```sql
-    CREATE OR REPLACE MODEL `your-gcp-project.ewallet_provider.clv_predictor`
-    OPTIONS(model_type='BOOSTED_TREE_REGRESSOR', input_label_cols=['total_spend']) AS
+    -- This query counts the number of verified vs. unverified users
+    -- who have made purchases.
     SELECT
-      p.account_tier,
-      p.is_verified_user,
-      u.age,
-      u.gender,
-      SUM(t.transaction_amount) AS total_spend
+        p.is_verified_user,
+        COUNT(DISTINCT u.id) AS number_of_customers
     FROM
-      `your-gcp-project.merchant_provider.users` u
+        `your-gcp-project.merchant_provider.users` AS u
     JOIN
-      `your-gcp-project.ewallet_provider.provider_users` p ON u.email = p.email
-    JOIN
-      `your-gcp-project.ewallet_provider.transactions` t ON p.provider_user_id = t.provider_user_id
-    GROUP BY 1, 2, 3, 4;
+        `your-gcp-project.ewallet_provider.provider_users` AS p ON u.email = p.email
+    GROUP BY 1;
     ```
+
+---
+
+### Use Case 4: User Enrichment (Provider's Goal)
+
+The **e-wallet provider** wants to learn more about their customers who shop at this merchant.
+
+*   **Action:** The provider joins their `provider_users` table with the merchant's `users` table.
+*   **Join Key:** `email`
+*   **Example Query:**
+    ```sql
+    -- This query, run by the provider, enriches their user data with
+    -- the merchant's demographic and location information.
+    SELECT
+        p.provider_user_id,
+        p.email,
+        m.age,
+        m.gender,
+        m.country AS merchant_customer_country
+    FROM
+        `your-gcp-project.ewallet_provider.provider_users` AS p
+    JOIN
+        `your-gcp-project.merchant_provider.users` AS m ON p.email = m.email
+    LIMIT 10;
+    ```
+
+---
+
+## 3. Advanced Use Case: Collaborative ML with BQML
+
+This section demonstrates a realistic and powerful machine learning use case where the **e-wallet provider** leverages the **merchant's** rich demographic data to build a more accurate predictive model than they could alone.
+
+### BQML Use Case: Predicting High-Tier Customers (Provider's Goal)
+
+*   **Business Goal:** The e-wallet provider wants to identify which of their customers are most likely to upgrade to a 'Premium' or 'Business' account tier. This allows them to target marketing campaigns for premium services more effectively and increase revenue through upselling.
+
+*   **The Data Clean Room Advantage:**
+    *   The **e-wallet provider** has basic account information about their users: `account_tier` and `is_verified_user`.
+    *   The **merchant** has rich demographic and behavioral data: `age`, `gender`, `state`, `country`, `traffic_source`, and shopping patterns.
+    *   In the DCR, the provider can **enrich their limited data** with the merchant's rich demographic signals by joining on the common `email` key. This allows them to build a much more accurate customer segmentation model without either side exposing their full customer datasets.
+
+*   **ML Approach:** The provider will train a **classification model** to predict `account_tier`. The workflow is as follows:
+    1.  The provider joins their `provider_users` table with the merchant's `users` table on `email`.
+    2.  They use the merchant's rich demographic features (`age`, `gender`, `state`, `traffic_source`) as predictive signals.
+    3.  They use their own `account_tier` as the label to predict.
+    4.  The trained model is saved back into the provider's project for their own use.
+
+*   **Collaborative ML Workflow:**
+    ```mermaid
+    graph TD
+        subgraph MerchantProject [Merchant's GCP Project]
+            direction TB
+            Users(merchant_provider.users)
+        end
+
+        subgraph ProviderProject [Provider's GCP Project]
+            direction TB
+            ProviderUsers(ewallet_provider.provider_users)
+            Model(Account Tier Predictor)
+        end
+
+        subgraph DCR [Data Clean Room]
+            direction TB
+            CreateModel[CREATE MODEL]
+        end
+
+        Users -- "email" --> CreateModel
+        ProviderUsers -- "email, account_tier" --> CreateModel
+
+        CreateModel -- "Saves to" --> Model
+
+        style DCR fill:#e6f2ff,stroke:#0066cc,stroke-width:2px,stroke-dasharray: 5 5
+    ```
+
+*   **Example `CREATE MODEL` Query (using training data):**
+    This query joins the provider's user table with the merchant's rich demographic data to build a powerful feature set. The label `account_tier` comes from the provider's own data.
+    ```sql
+    CREATE OR REPLACE MODEL `your-gcp-project.ewallet_provider.account_tier_predictor`
+    OPTIONS(model_type='LOGISTIC_REG', input_label_cols=['account_tier']) AS
+    SELECT
+      -- Features from the merchant's rich demographic data
+      m.age,
+      m.gender,
+      m.state,
+      m.country,
+      m.traffic_source,
+      -- Label from the provider's own data
+      p.account_tier
+    FROM
+      `your-gcp-project.ewallet_provider.provider_users` p
+    JOIN
+      `your-gcp-project.merchant_provider.users` m ON p.email = m.email;
+    ```
+
 *   **Example `ML.PREDICT` Query (using inference data):**
+    The provider can now use this model to predict the likely account tier of new customers from the inference dataset.
     ```sql
     SELECT
-      *
+      p.provider_user_id,
+      p.email,
+      predicted_account_tier,
+      predicted_account_tier_probs
     FROM
-      ML.PREDICT(MODEL `your-gcp-project.ewallet_provider.clv_predictor`,
+      ML.PREDICT(MODEL `your-gcp-project.ewallet_provider.account_tier_predictor`,
         (
           SELECT
-            p.account_tier,
-            p.is_verified_user,
-            u.age,
-            u.gender
+            p.provider_user_id,
+            p.email,
+            m.age,
+            m.gender,
+            m.state,
+            m.country,
+            m.traffic_source
           FROM
-            `your-gcp-project.merchant_provider.users` u
+            `your-gcp-project.ewallet_provider.provider_users_inference` p
           JOIN
-            `your-gcp-project.ewallet_provider.provider_users_inference` p ON u.email = p.email
+            `your-gcp-project.merchant_provider.users_inference` m ON p.email = m.email
         )
       );
     ```
 
-## 3. How to Run
+## 4. How to Run
 
 ### Prerequisites
 
@@ -175,7 +273,7 @@ Run the main script from the project's root directory. This single command will 
 uv run python -m dcr_data_generator.main --project-id your-gcp-project
 ```
 
-## 4. Generated Schemas
+## 5. Generated Schemas
 
 The script creates tables in two datasets within your target GCP project.
 

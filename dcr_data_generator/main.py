@@ -11,7 +11,7 @@ from . import data_generation_logic
 
 # --- Configuration ---
 # This is the default project ID, can be overridden with --project-id
-DEFAULT_WRITE_PROJECT_ID = "johanesa-playground-326616"
+DEFAULT_WRITE_PROJECT_ID = "your-gcp-project"
 TRAINING_DATE = "2025-09-23"
 INFERENCE_DATE = "2025-09-24"
 
