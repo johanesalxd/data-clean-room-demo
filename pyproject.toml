@@ -1,0 +1,15 @@
+[project]
+name = "dcr-data-generator"
+version = "0.1.0"
+description = "A script to generate synthetic data for a BigQuery Data Clean Room demo."
+requires-python = "==3.12.*"
+dependencies = [
+    "google-cloud-bigquery",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+packages = ["dcr_data_generator"]
