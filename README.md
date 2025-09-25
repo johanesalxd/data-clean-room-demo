@@ -2,19 +2,64 @@
 
 This project contains a Python script to generate synthetic data for a BigQuery Data Clean Room (DCR) demo. It simulates a realistic data-sharing partnership between an e-commerce merchant and an e-wallet payment provider.
 
-The script reads from the public `bigquery-public-data.thelook_ecommerce` dataset and creates a new dataset in your own GCP project containing the payment provider's data.
+The script first creates a clean, isolated snapshot of source data from `bigquery-public-data.thelook_ecommerce` into your own GCP project. It then uses this clean snapshot to generate the synthetic provider data. This ensures the demo is reproducible and resilient to changes in the public dataset.
 
-## 1. Data Clean Room Use Cases
+## 1. Architecture: A Two-Step Process
 
-This simulation enables several powerful use cases, allowing two parties to gain mutual insights without exposing their raw, sensitive customer data to each other.
+The data generation pipeline is a two-step process designed for robustness and data integrity.
+
+**Step 1: Create Merchant Snapshot**
+A clean, de-duplicated copy of the merchant's data is created in a new `merchant_provider` dataset within your GCP project. This involves:
+1.  Copying `orders` and `order_items` for a specific date.
+2.  Identifying the unique users from those orders and copying only their most recent, de-duplicated records into a new `users` table.
+
+**Step 2: Generate E-Wallet Provider Data**
+The script then reads from the clean `merchant_provider` snapshot to generate the `ewallet_provider` dataset, which contains the synthetic data for the payment provider.
+
+```mermaid
+graph TD
+    subgraph PublicData [Source: bigquery-public-data]
+        direction LR
+        PublicUsers(thelook_ecommerce.users)
+        PublicOrders(thelook_ecommerce.orders)
+        PublicOrderItems(thelook_ecommerce.order_items)
+    end
+
+    subgraph YourProject [Destination: Your GCP Project]
+        direction TB
+
+        subgraph SnapshotDS [merchant_provider]
+            direction LR
+            SnapshotUsers(users)
+            SnapshotOrders(orders)
+            SnapshotOrderItems(order_items)
+        end
+
+        subgraph ProviderDS [ewallet_provider]
+            direction LR
+            ProviderUsers(provider_users)
+            ProviderTransactions(transactions)
+        end
+
+        SnapshotDS -- "Read From" --> ProviderDS
+    end
+
+    PublicUsers --> SnapshotUsers
+    PublicOrders --> SnapshotOrders
+    PublicOrderItems --> SnapshotOrderItems
+```
+
+## 2. Data Clean Room Use Cases
+
+This simulation enables several powerful use cases. All example queries should be run against the tables created in **your own GCP project**.
 
 ---
 
 ### Use Case 1: Transaction Verification (Merchant's Goal)
 
-The **merchant** wants to understand which of their sales were processed by this specific e-wallet provider. This is the most fundamental DCR use case.
+The **merchant** wants to understand which of their sales were processed by this specific e-wallet provider.
 
-*   **Action:** The merchant joins their `orders` table with the provider's `transactions` table inside the DCR.
+*   **Action:** The merchant joins their `orders` table (from the `merchant_provider` snapshot) with the provider's `transactions` table.
 *   **Join Key:** `order_id`
 *   **Example Query:**
     ```sql
@@ -26,7 +71,7 @@ The **merchant** wants to understand which of their sales were processed by this
         p.transaction_id,
         p.transaction_amount
     FROM
-        `bigquery-public-data.thelook_ecommerce.orders` AS m
+        `your-gcp-project.merchant_provider.orders` AS m
     INNER JOIN
         `your-gcp-project.ewallet_provider.transactions` AS p
         ON m.order_id = p.order_id
@@ -39,7 +84,7 @@ The **merchant** wants to understand which of their sales were processed by this
 
 The **merchant** wants to know if customers with a higher "tier" e-wallet account spend more at their store.
 
-*   **Action:** The merchant joins their `users` data with the provider's `provider_users` data (which contains the `account_tier`).
+*   **Action:** The merchant joins their `users` data with the provider's `provider_users` data.
 *   **Join Key:** `email`
 *   **Example Query:**
     ```sql
@@ -50,7 +95,7 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
         AVG(t.transaction_amount) AS average_order_value,
         COUNT(DISTINCT u.id) AS number_of_customers
     FROM
-        `bigquery-public-data.thelook_ecommerce.users` AS u
+        `your-gcp-project.merchant_provider.users` AS u
     JOIN
         `your-gcp-project.ewallet_provider.provider_users` AS p ON u.email = p.email
     JOIN
@@ -63,7 +108,7 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
 
 ### Use Case 3: Trust and Fraud Analysis (Merchant's Goal)
 
-The **merchant** wants to identify high-trust customers to potentially offer them special services or credit.
+The **merchant** wants to identify high-trust customers.
 
 *   **Action:** The merchant uses the `is_verified_user` flag from the provider's data as a signal of trustworthiness.
 *   **Join Key:** `email`
@@ -75,7 +120,7 @@ The **merchant** wants to identify high-trust customers to potentially offer the
         p.is_verified_user,
         COUNT(DISTINCT u.id) AS number_of_customers
     FROM
-        `bigquery-public-data.thelook_ecommerce.users` AS u
+        `your-gcp-project.merchant_provider.users` AS u
     JOIN
         `your-gcp-project.ewallet_provider.provider_users` AS p ON u.email = p.email
     GROUP BY 1;
@@ -85,7 +130,7 @@ The **merchant** wants to identify high-trust customers to potentially offer the
 
 ### Use Case 4: User Enrichment (Provider's Goal)
 
-The **e-wallet provider** wants to learn more about the demographics and location of their own customers who shop at this merchant.
+The **e-wallet provider** wants to learn more about their customers who shop at this merchant.
 
 *   **Action:** The provider joins their `provider_users` table with the merchant's `users` table.
 *   **Join Key:** `email`
@@ -102,37 +147,9 @@ The **e-wallet provider** wants to learn more about the demographics and locatio
     FROM
         `your-gcp-project.ewallet_provider.provider_users` AS p
     JOIN
-        `bigquery-public-data.thelook_ecommerce.users` AS m ON p.email = m.email
+        `your-gcp-project.merchant_provider.users` AS m ON p.email = m.email
     LIMIT 10;
     ```
-
-## 2. Data Flow and Architecture
-
-The following diagram illustrates the data flow from the public source dataset to the newly created provider dataset in your target project.
-
-```mermaid
-graph TD
-    subgraph Source [Source: bigquery-public-data]
-        direction LR
-        subgraph MerchantData [thelook_ecommerce]
-            M_Orders(orders)
-            M_Users(users)
-            M_OrderItems(order_items)
-        end
-    end
-
-    subgraph Destination [Target: Your GCP Project]
-        direction LR
-        subgraph ProviderData [ewallet_provider]
-            P_Transactions(transactions)
-            P_Users(provider_users)
-        end
-    end
-
-    M_Orders -- "Join on order_id" --> P_Transactions
-    M_Users -- "Join on email" --> P_Users
-    M_OrderItems -- "Joined to get total_price" --> M_Orders
-```
 
 ## 3. How to Run
 
@@ -148,7 +165,7 @@ graph TD
     Open `dcr_data_generator/main.py` and update the `WRITE_PROJECT_ID` variable with your Google Cloud project ID.
 
 2.  **Create and Sync the Virtual Environment:**
-    From the root of this project directory, run the following command. This will create a local virtual environment (`.venv`) and install the required dependencies (`google-cloud-bigquery`).
+    From the root of this project directory, run the following command. This will create a local virtual environment (`.venv`) and install the required dependencies.
     ```sh
     uv sync
     ```
@@ -161,12 +178,18 @@ Once the setup is complete, run the main script from the project's root director
 uv run python -m dcr_data_generator.main
 ```
 
-The script will handle the creation of the `ewallet_provider` dataset and its tables, truncating them first if they already exist to prevent data duplication.
+The script will create both the `merchant_provider` and `ewallet_provider` datasets in your project, overwriting them if they already exist to ensure a clean run every time.
 
 ## 4. Generated Schemas
 
-The script will create the following tables in the `ewallet_provider` dataset within your target GCP project.
+The script will create tables in two datasets within your target GCP project.
 
+### `merchant_provider` (Clean Snapshot)
+*   **`orders`**: A direct copy of orders for the target date.
+*   **`order_items`**: A direct copy of corresponding order items.
+*   **`users`**: A de-duplicated copy of users related to the orders.
+
+### `ewallet_provider` (Synthetic Data)
 #### `provider_users`
 | Column Name        | Data Type | Description                                                     |
 | ------------------ | --------- | --------------------------------------------------------------- |
