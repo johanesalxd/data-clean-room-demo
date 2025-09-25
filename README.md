@@ -14,7 +14,7 @@ A clean, de-duplicated copy of the merchant's data is created in a new `merchant
 2.  Identifying the unique users from those orders and copying only their most recent, de-duplicated records into a new `users` table.
 
 **Step 2: Generate E-Wallet Provider Data**
-The script then reads from the clean `merchant_provider` snapshot to generate the `ewallet_provider` dataset, which contains the synthetic data for the payment provider.
+The script then reads from the clean `merchant_provider` snapshot to generate the `ewallet_provider` dataset, which contains the synthetic data for the payment provider. This process is run twice to create separate datasets for training and inference.
 
 ```mermaid
 graph TD
@@ -39,6 +39,8 @@ graph TD
             direction LR
             ProviderUsers(provider_users)
             ProviderTransactions(transactions)
+            ProviderUsersInf(provider_users_inference)
+            ProviderTransactionsInf(transactions_inference)
         end
 
         SnapshotDS -- "Read From" --> ProviderDS
@@ -106,49 +108,47 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
 
 ---
 
-### Use Case 3: Trust and Fraud Analysis (Merchant's Goal)
+### Use Case 3: BQML - Predicting Customer Value (Merchant's Goal)
 
-The **merchant** wants to identify high-trust customers.
+The **merchant** wants to predict the lifetime value (LTV) of their customers by using the provider's data as predictive features.
 
-*   **Action:** The merchant uses the `is_verified_user` flag from the provider's data as a signal of trustworthiness.
-*   **Join Key:** `email`
-*   **Example Query:**
+*   **Action:** Train a regression model using the combined data.
+*   **Example `CREATE MODEL` Query (using training data):**
     ```sql
-    -- This query counts the number of verified vs. unverified users
-    -- who have made purchases.
+    CREATE OR REPLACE MODEL `your-gcp-project.ewallet_provider.clv_predictor`
+    OPTIONS(model_type='BOOSTED_TREE_REGRESSOR', input_label_cols=['total_spend']) AS
     SELECT
-        p.is_verified_user,
-        COUNT(DISTINCT u.id) AS number_of_customers
+      p.account_tier,
+      p.is_verified_user,
+      u.age,
+      u.gender,
+      SUM(t.transaction_amount) AS total_spend
     FROM
-        `your-gcp-project.merchant_provider.users` AS u
+      `your-gcp-project.merchant_provider.users` u
     JOIN
-        `your-gcp-project.ewallet_provider.provider_users` AS p ON u.email = p.email
-    GROUP BY 1;
+      `your-gcp-project.ewallet_provider.provider_users` p ON u.email = p.email
+    JOIN
+      `your-gcp-project.ewallet_provider.transactions` t ON p.provider_user_id = t.provider_user_id
+    GROUP BY 1, 2, 3, 4;
     ```
-
----
-
-### Use Case 4: User Enrichment (Provider's Goal)
-
-The **e-wallet provider** wants to learn more about their customers who shop at this merchant.
-
-*   **Action:** The provider joins their `provider_users` table with the merchant's `users` table.
-*   **Join Key:** `email`
-*   **Example Query:**
+*   **Example `ML.PREDICT` Query (using inference data):**
     ```sql
-    -- This query, run by the provider, enriches their user data with
-    -- the merchant's demographic and location information.
     SELECT
-        p.provider_user_id,
-        p.email,
-        m.age,
-        m.gender,
-        m.country AS merchant_customer_country
+      *
     FROM
-        `your-gcp-project.ewallet_provider.provider_users` AS p
-    JOIN
-        `your-gcp-project.merchant_provider.users` AS m ON p.email = m.email
-    LIMIT 10;
+      ML.PREDICT(MODEL `your-gcp-project.ewallet_provider.clv_predictor`,
+        (
+          SELECT
+            p.account_tier,
+            p.is_verified_user,
+            u.age,
+            u.gender
+          FROM
+            `your-gcp-project.merchant_provider.users` u
+          JOIN
+            `your-gcp-project.ewallet_provider.provider_users_inference` p ON u.email = p.email
+        )
+      );
     ```
 
 ## 3. How to Run
@@ -156,40 +156,39 @@ The **e-wallet provider** wants to learn more about their customers who shop at 
 ### Prerequisites
 
 *   Python 3.12
-*   `uv` package manager installed (`pip install uv`)
+*   `uv` package manager installed
 *   Authenticated Google Cloud SDK on your local machine.
 
 ### Setup
 
-1.  **Set your GCP Project ID:**
-    Open `dcr_data_generator/main.py` and update the `WRITE_PROJECT_ID` variable with your Google Cloud project ID.
+1.  **Create and Sync the Virtual Environment:**
+    From the root of this project directory, run `uv sync`. This creates a local `.venv` and installs the required dependencies.
 
-2.  **Create and Sync the Virtual Environment:**
-    From the root of this project directory, run the following command. This will create a local virtual environment (`.venv`) and install the required dependencies.
-    ```sh
-    uv sync
-    ```
+2.  **Set your GCP Project ID (Optional):**
+    The script defaults to `johanesa-playground-326616`. You can override this by passing the `--project-id` flag during execution.
 
 ### Execution
 
-Once the setup is complete, run the main script from the project's root directory:
+Run the main script from the project's root directory. This single command will generate **both** the training and inference datasets.
 
 ```sh
-uv run python -m dcr_data_generator.main
+uv run python -m dcr_data_generator.main --project-id your-gcp-project
 ```
-
-The script will create both the `merchant_provider` and `ewallet_provider` datasets in your project, overwriting them if they already exist to ensure a clean run every time.
 
 ## 4. Generated Schemas
 
-The script will create tables in two datasets within your target GCP project.
+The script creates tables in two datasets within your target GCP project.
 
 ### `merchant_provider` (Clean Snapshot)
-*   **`orders`**: A direct copy of orders for the target date.
-*   **`order_items`**: A direct copy of corresponding order items.
-*   **`users`**: A de-duplicated copy of users related to the orders.
+This dataset will contain two sets of tables, one for training and one for inference.
+*   **Training Tables:** `orders`, `order_items`, `users`
+*   **Inference Tables:** `orders_inference`, `order_items_inference`, `users_inference`
 
 ### `ewallet_provider` (Synthetic Data)
+This dataset will contain two sets of tables:
+*   **Training Tables:** `provider_users` and `transactions`.
+*   **Inference Tables:** `provider_users_inference` and `transactions_inference`.
+
 #### `provider_users`
 | Column Name        | Data Type | Description                                                     |
 | ------------------ | --------- | --------------------------------------------------------------- |
@@ -199,7 +198,6 @@ The script will create tables in two datasets within your target GCP project.
 | `city`             | `STRING`  | **Sourced directly from the merchant's `users` table.**         |
 | `account_tier`     | `STRING`  | The user's account level with the provider (e.g., 'Free', 'Premium'). |
 | `is_verified_user` | `BOOLEAN` | Indicates if the user has completed KYC with the provider.      |
-
 
 #### `transactions`
 | Column Name           | Data Type | Description                                                  |

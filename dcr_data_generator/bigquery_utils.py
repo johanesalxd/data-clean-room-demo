@@ -5,6 +5,8 @@ Utility functions for interacting with Google BigQuery.
 """
 
 import functools
+import json
+import os
 import time
 
 from google.cloud import bigquery
@@ -102,57 +104,49 @@ def create_table(table_id: str, schema: list):
             f"Created table {table.project}.{table.dataset_id}.{table.table_id}")
 
 
-def retry_on_not_found(max_retries=3):
+def insert_data_from_file(table_id: str, data: list, schema: list):
     """
-    A decorator to retry a function call if a `NotFound` exception is raised.
-    Implements exponential backoff.
-    """
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            attempt = 0
-            while attempt < max_retries:
-                try:
-                    return func(*args, **kwargs)
-                except NotFound:
-                    attempt += 1
-                    if attempt >= max_retries:
-                        print(
-                            f"Operation failed after {max_retries} attempts. Giving up.")
-                        raise
-                    else:
-                        wait_time = 2 ** attempt
-                        print(
-                            f"NotFound error. Retrying in {wait_time} seconds... (Attempt {attempt}/{max_retries})")
-                        time.sleep(wait_time)
-                except Exception as e:
-                    print(f"An unexpected error occurred: {e}")
-                    return
-        return wrapper
-    return decorator
-
-
-@retry_on_not_found()
-def insert_data(table_id: str, data: list):
-    """
-    Inserts data into a BigQuery table from a list of dictionaries.
-    Retries on NotFound errors to handle table creation race conditions.
+    Inserts data into a BigQuery table by loading from a temporary JSONL file.
+    This method avoids the streaming buffer and makes data immediately available.
 
     Args:
         table_id: The ID of the table to insert data into.
         data: A list of dictionaries representing the rows to insert.
+        schema: The schema of the destination table.
     """
     if not data:
         print(f"No data to insert into {table_id}.")
         return
 
+    temp_file_path = "temp_data.jsonl"
     try:
-        errors = client.insert_rows_json(table_id, data)
-        if not errors:
-            print(f"Successfully inserted {len(data)} rows into {table_id}.")
-        else:
-            print(
-                f"Encountered errors while inserting rows into {table_id}: {errors}")
-    except Exception as e:
+        # Write data to a temporary JSONL file
+        with open(temp_file_path, "w") as f:
+            for item in data:
+                f.write(json.dumps(item) + "\n")
+
+        # Configure the load job
+        job_config = bigquery.LoadJobConfig(
+            schema=schema,
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+        )
+
         print(
-            f"An unexpected error occurred during data insertion into {table_id}: {e}")
+            f"Starting load job to insert {len(data)} rows into {table_id}...")
+        with open(temp_file_path, "rb") as source_file:
+            load_job = client.load_table_from_file(
+                source_file, table_id, job_config=job_config
+            )
+
+        load_job.result()  # Wait for the job to complete
+
+        destination_table = client.get_table(table_id)
+        print(
+            f"Load job complete. Loaded {destination_table.num_rows} rows into {table_id}.")
+
+    except Exception as e:
+        print(f"An error occurred during the load job for {table_id}: {e}")
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
