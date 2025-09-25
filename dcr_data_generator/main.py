@@ -10,8 +10,6 @@ import argparse
 from . import data_generation_logic
 
 # --- Configuration ---
-# This is the default project ID, can be overridden with --project-id
-DEFAULT_WRITE_PROJECT_ID = "your-gcp-project"
 TRAINING_DATE = "2025-09-23"
 INFERENCE_DATE = "2025-09-24"
 
@@ -24,23 +22,31 @@ def main():
     parser = argparse.ArgumentParser(
         description="DCR Data Generation Orchestrator")
     parser.add_argument(
-        "--project-id",
+        "--merchant-project-id",
         type=str,
-        default=DEFAULT_WRITE_PROJECT_ID,
-        help="The GCP project ID to write the datasets to."
+        required=True,
+        help="The GCP project ID for the merchant's data."
+    )
+    parser.add_argument(
+        "--provider-project-id",
+        type=str,
+        required=True,
+        help="The GCP project ID for the e-wallet provider's data."
     )
     args = parser.parse_args()
 
     # --- Generate Training Data ---
     data_generation_logic.generate_dataset(
-        write_project_id=args.project_id,
+        merchant_project_id=args.merchant_project_id,
+        provider_project_id=args.provider_project_id,
         target_date=TRAINING_DATE,
         table_suffix=""  # No suffix for the main training tables
     )
 
     # --- Generate Inference Data ---
     data_generation_logic.generate_dataset(
-        write_project_id=args.project_id,
+        merchant_project_id=args.merchant_project_id,
+        provider_project_id=args.provider_project_id,
         target_date=INFERENCE_DATE,
         table_suffix="_inference"  # Suffix for inference tables
     )

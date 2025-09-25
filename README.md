@@ -72,9 +72,9 @@ The **merchant** wants to understand which of their sales were processed by this
     SELECT DISTINCT
         m.order_id
     FROM
-        `your-gcp-project.merchant_provider.orders` AS m
+        `your-merchant-project.merchant_provider.orders` AS m
     INNER JOIN
-        `your-gcp-project.ewallet_provider.transactions` AS p
+        `your-provider-project.ewallet_provider.transactions` AS p
         ON m.order_id = p.order_id;
     ```
 
@@ -97,13 +97,13 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
         AVG(t.transaction_amount) AS average_order_value,
         COUNT(DISTINCT u.id) AS number_of_customers
     FROM
-        `your-gcp-project.merchant_provider.users` AS u
+        `your-merchant-project.merchant_provider.users` AS u
     JOIN
-        `your-gcp-project.ewallet_provider.provider_users` AS p ON u.email = p.email
+        `your-provider-project.ewallet_provider.provider_users` AS p ON u.email = p.email
     JOIN
-        `your-gcp-project.merchant_provider.orders` AS o ON u.id = o.user_id
+        `your-merchant-project.merchant_provider.orders` AS o ON u.id = o.user_id
     JOIN
-        `your-gcp-project.ewallet_provider.transactions` AS t ON o.order_id = t.order_id
+        `your-provider-project.ewallet_provider.transactions` AS t ON o.order_id = t.order_id
     GROUP BY 1
     HAVING COUNT(DISTINCT u.id) >= 50  -- Example threshold for demo purposes
     ORDER BY 2 DESC;
@@ -127,9 +127,9 @@ The **merchant** wants to identify high-trust customers.
         p.is_verified_user,
         COUNT(DISTINCT u.id) AS number_of_customers
     FROM
-        `your-gcp-project.merchant_provider.users` AS u
+        `your-merchant-project.merchant_provider.users` AS u
     JOIN
-        `your-gcp-project.ewallet_provider.provider_users` AS p ON u.email = p.email
+        `your-provider-project.ewallet_provider.provider_users` AS p ON u.email = p.email
     GROUP BY 1
     HAVING COUNT(DISTINCT u.id) >= 50;  -- Example threshold for demo purposes
     ```
@@ -154,9 +154,9 @@ The **e-wallet provider** wants to learn more about their customers who shop at 
         m.country AS merchant_customer_country,
         m.traffic_source
     FROM
-        `your-gcp-project.ewallet_provider.provider_users` AS p
+        `your-provider-project.ewallet_provider.provider_users` AS p
     JOIN
-        `your-gcp-project.merchant_provider.users` AS m ON p.email = m.email;
+        `your-merchant-project.merchant_provider.users` AS m ON p.email = m.email;
     ```
 
 ---
@@ -210,7 +210,7 @@ This section demonstrates a realistic and powerful machine learning use case whe
 *   **Example `CREATE MODEL` Query (using training data):**
     This query joins the provider's user table with the merchant's rich demographic data to build a powerful feature set. The label `account_tier` comes from the provider's own data.
     ```sql
-    CREATE OR REPLACE MODEL `your-gcp-project.ewallet_provider.account_tier_predictor`
+    CREATE OR REPLACE MODEL `your-provider-project.ewallet_provider.account_tier_predictor`
     OPTIONS(model_type='LOGISTIC_REG', input_label_cols=['account_tier']) AS
     SELECT
       -- Features from the merchant's rich demographic data
@@ -222,21 +222,21 @@ This section demonstrates a realistic and powerful machine learning use case whe
       -- Label from the provider's own data
       p.account_tier
     FROM
-      `your-gcp-project.ewallet_provider.provider_users` p
+      `your-provider-project.ewallet_provider.provider_users` p
     JOIN
-      `your-gcp-project.merchant_provider.users` m ON p.email = m.email;
+      `your-merchant-project.merchant_provider.users` m ON p.email = m.email;
     ```
 
 *   **Example `ML.PREDICT` Query (using inference data):**
     The provider can now use this model to predict the likely account tier of new customers from the inference dataset.
     ```sql
     SELECT
-      p.provider_user_id,
-      p.email,
+      provider_user_id,
+      email,
       predicted_account_tier,
       predicted_account_tier_probs
     FROM
-      ML.PREDICT(MODEL `your-gcp-project.ewallet_provider.account_tier_predictor`,
+      ML.PREDICT(MODEL `your-provider-project.ewallet_provider.account_tier_predictor`,
         (
           SELECT
             p.provider_user_id,
@@ -247,9 +247,9 @@ This section demonstrates a realistic and powerful machine learning use case whe
             m.country,
             m.traffic_source
           FROM
-            `your-gcp-project.ewallet_provider.provider_users_inference` p
+            `your-provider-project.ewallet_provider.provider_users_inference` p
           JOIN
-            `your-gcp-project.merchant_provider.users_inference` m ON p.email = m.email
+            `your-merchant-project.merchant_provider.users_inference` m ON p.email = m.email
         )
       );
     ```
@@ -267,27 +267,27 @@ This section demonstrates a realistic and powerful machine learning use case whe
 1.  **Create and Sync the Virtual Environment:**
     From the root of this project directory, run `uv sync`. This creates a local `.venv` and installs the required dependencies.
 
-2.  **Set your GCP Project ID (Optional):**
-    The script defaults to `johanesa-playground-326616`. You can override this by passing the `--project-id` flag during execution.
+2.  **Set your GCP Project IDs:**
+    You must provide two separate GCP project IDs - one for the merchant's data and one for the e-wallet provider's data. This simulates the real-world scenario where each entity maintains their data in separate projects.
 
 ### Execution
 
 Run the main script from the project's root directory. This single command will generate **both** the training and inference datasets.
 
 ```sh
-uv run python -m dcr_data_generator.main --project-id your-gcp-project
+uv run python -m dcr_data_generator.main --merchant-project-id your-merchant-project --provider-project-id your-provider-project
 ```
 
 ## 5. Generated Schemas
 
-The script creates tables in two datasets within your target GCP project.
+The script creates tables in two datasets across your separate GCP projects.
 
-### `merchant_provider` (Clean Snapshot)
+### `merchant_provider` (Clean Snapshot) - Created in Merchant's Project
 This dataset will contain two sets of tables, one for training and one for inference.
 *   **Training Tables:** `orders`, `order_items`, `users`
 *   **Inference Tables:** `orders_inference`, `order_items_inference`, `users_inference`
 
-### `ewallet_provider` (Synthetic Data)
+### `ewallet_provider` (Synthetic Data) - Created in Provider's Project
 This dataset will contain two sets of tables:
 *   **Training Tables:** `provider_users` and `transactions`.
 *   **Inference Tables:** `provider_users_inference` and `transactions_inference`.
