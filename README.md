@@ -64,21 +64,18 @@ The **merchant** wants to understand which of their sales were processed by this
 
 *   **Action:** The merchant joins their `orders` table with the provider's `transactions` table.
 *   **Join Key:** `order_id`
+*   **DCR Analysis Rule:** **List Overlap** - This query identifies the intersection of two datasets (merchant's orders and provider's transactions) based on a common key. The DCR returns only the overlapping identifiers, protecting both parties' full datasets while allowing the merchant to identify which of their orders were processed by this provider.
 *   **Example Query:**
     ```sql
-    -- This query, run by the merchant, finds all of their orders
-    -- that have a matching transaction record from the payment provider.
-    SELECT
-        m.order_id,
-        m.created_at,
-        p.transaction_id,
-        p.transaction_amount
+    -- This query returns the list of order_ids that exist in both datasets,
+    -- demonstrating a classic "list overlap" scenario in a data clean room.
+    SELECT DISTINCT
+        m.order_id
     FROM
         `your-gcp-project.merchant_provider.orders` AS m
     INNER JOIN
         `your-gcp-project.ewallet_provider.transactions` AS p
-        ON m.order_id = p.order_id
-    LIMIT 10;
+        ON m.order_id = p.order_id;
     ```
 
 ---
@@ -87,12 +84,14 @@ The **merchant** wants to understand which of their sales were processed by this
 
 The **merchant** wants to know if customers with a higher "tier" e-wallet account spend more at their store.
 
-*   **Action:** The merchant joins their `users` data with the provider's `provider_users` data.
-*   **Join Key:** `email`
+*   **Action:** The merchant joins their `users` table with the provider's `provider_users` table, their own `orders` table, and the provider's `transactions` table.
+*   **Join Keys:** `email`, `user_id`, and `order_id`
+*   **DCR Analysis Rule:** **Aggregation with Threshold** - This query groups data by a dimension (`account_tier`) and calculates aggregate metrics (`AVG`, `COUNT`). The DCR will automatically apply aggregation thresholds, filtering out any groups with fewer than the minimum required number of users (typically 50+) to prevent re-identification of individuals.
 *   **Example Query:**
     ```sql
     -- This query segments customers by the provider's account tier
     -- and calculates the average order value for each tier.
+    -- Results will only show tiers with sufficient user counts to meet privacy thresholds.
     SELECT
         p.account_tier,
         AVG(t.transaction_amount) AS average_order_value,
@@ -102,8 +101,11 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
     JOIN
         `your-gcp-project.ewallet_provider.provider_users` AS p ON u.email = p.email
     JOIN
-        `your-gcp-project.ewallet_provider.transactions` AS t ON p.provider_user_id = t.provider_user_id
+        `your-gcp-project.merchant_provider.orders` AS o ON u.id = o.user_id
+    JOIN
+        `your-gcp-project.ewallet_provider.transactions` AS t ON o.order_id = t.order_id
     GROUP BY 1
+    HAVING COUNT(DISTINCT u.id) >= 50  -- Example threshold for demo purposes
     ORDER BY 2 DESC;
     ```
 
@@ -113,12 +115,14 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
 
 The **merchant** wants to identify high-trust customers.
 
-*   **Action:** The merchant uses the `is_verified_user` flag from the provider's data as a signal of trustworthiness.
+*   **Action:** The merchant joins their `users` table with the provider's `provider_users` table to analyze the `is_verified_user` flag.
 *   **Join Key:** `email`
+*   **DCR Analysis Rule:** **Aggregation with Threshold** - This query groups users by their verification status and counts them. Like Use Case 2, the DCR will apply aggregation thresholds to ensure that both groups (verified and unverified) have sufficient user counts to protect individual privacy.
 *   **Example Query:**
     ```sql
     -- This query counts the number of verified vs. unverified users
-    -- who have made purchases.
+    -- who have made purchases. Results will only show if both groups
+    -- meet the minimum threshold requirements.
     SELECT
         p.is_verified_user,
         COUNT(DISTINCT u.id) AS number_of_customers
@@ -126,7 +130,8 @@ The **merchant** wants to identify high-trust customers.
         `your-gcp-project.merchant_provider.users` AS u
     JOIN
         `your-gcp-project.ewallet_provider.provider_users` AS p ON u.email = p.email
-    GROUP BY 1;
+    GROUP BY 1
+    HAVING COUNT(DISTINCT u.id) >= 50;  -- Example threshold for demo purposes
     ```
 
 ---
@@ -137,21 +142,21 @@ The **e-wallet provider** wants to learn more about their customers who shop at 
 
 *   **Action:** The provider joins their `provider_users` table with the merchant's `users` table.
 *   **Join Key:** `email`
+*   **DCR Analysis Rule:** **List Overlap** - This query identifies the intersection of the provider's customers and the merchant's customers, returning enriched demographic data for the overlapping users. The DCR ensures that only users who exist in both datasets are returned, protecting the privacy of non-overlapping customers from both sides.
 *   **Example Query:**
     ```sql
-    -- This query, run by the provider, enriches their user data with
-    -- the merchant's demographic and location information.
-    SELECT
+    -- This query returns demographic enrichment data for users who exist
+    -- in both the provider's and merchant's datasets, demonstrating list overlap.
+    SELECT DISTINCT
         p.provider_user_id,
-        p.email,
         m.age,
         m.gender,
-        m.country AS merchant_customer_country
+        m.country AS merchant_customer_country,
+        m.traffic_source
     FROM
         `your-gcp-project.ewallet_provider.provider_users` AS p
     JOIN
-        `your-gcp-project.merchant_provider.users` AS m ON p.email = m.email
-    LIMIT 10;
+        `your-gcp-project.merchant_provider.users` AS m ON p.email = m.email;
     ```
 
 ---

@@ -4,10 +4,8 @@
 Utility functions for interacting with Google BigQuery.
 """
 
-import functools
 import json
 import os
-import time
 
 from google.cloud import bigquery
 from google.cloud.exceptions import NotFound
