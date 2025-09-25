@@ -309,7 +309,24 @@ This is expected and demonstrates a real-world data quality issue: the source `t
 
 This discrepancy serves as an excellent talking point during demos, highlighting the importance of robust data preparation and quality checks in data clean room implementations.
 
-## 5. Generated Schemas
+## 5. Analytics Hub Setup (Normal Data Exchange)
+
+For comparison with the clean room approach, this project also includes automation for setting up a normal BigQuery Analytics Hub data exchange. This allows you to demonstrate the differences between secure clean room analytics and traditional data sharing.
+
+### Quick Setup
+
+```bash
+python setup_analytics_hub.py \
+    --provider-project-id your-provider-project \
+    --merchant-project-id your-merchant-project \
+    --subscriber-email merchant-user@example.com
+```
+
+This script automates the creation of a data exchange, listing, and access permissions, enabling the merchant to directly access the provider's data through Analytics Hub.
+
+**📖 For detailed instructions, troubleshooting, and demo tips, see: [Analytics Hub Setup Guide](analytics_hub_readme.md)**
+
+## 6. Generated Schemas
 
 The script creates tables in two datasets across your separate GCP projects.
 

@@ -46,10 +46,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "google-cloud-bigquery" },
+    { name = "google-cloud-bigquery-analyticshub" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "google-cloud-bigquery" }]
+requires-dist = [
+    { name = "google-cloud-bigquery" },
+    { name = "google-cloud-bigquery-analyticshub" },
+]
 
 [[package]]
 name = "google-api-core"
@@ -106,6 +110,22 @@ wheels = [
 ]
 
 [[package]]
+name = "google-cloud-bigquery-analyticshub"
+version = "0.4.20"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "grpc-google-iam-v1" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5a/9a/09cbc018c6290811489ed93db50168cb194c34cdbfb043ea38839208299e/google_cloud_bigquery_analyticshub-0.4.20.tar.gz", hash = "sha256:910c41759c5583b02aea0939897f276083ab9f7261a9d8a86659673affa8556e", size = 108194, upload-time = "2025-09-04T14:54:26.536Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/c3/8223a1bebab88105e49eb70ac61756029b636a22601f54ac5718ea950f72/google_cloud_bigquery_analyticshub-0.4.20-py3-none-any.whl", hash = "sha256:eadbd8e6ba7922a8293a2d7d6294bd108d2cae8f00eedb459cab32534a1eee5f", size = 88874, upload-time = "2025-09-04T14:54:11.447Z" },
+]
+
+[[package]]
 name = "google-cloud-core"
 version = "2.4.3"
 source = { registry = "https://pypi.org/simple" }
@@ -153,6 +173,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/39/24/33db22342cf4a2ea27c9955e6713140fedd51e8b141b5ce5260897020f1a/googleapis_common_protos-1.70.0.tar.gz", hash = "sha256:0e1b44e0ea153e6594f9f394fef15193a68aaaea2d843f83e2742717ca753257", size = 145903, upload-time = "2025-04-14T10:17:02.924Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/86/f1/62a193f0227cf15a920390abe675f386dec35f7ae3ffe6da582d3ade42c7/googleapis_common_protos-1.70.0-py3-none-any.whl", hash = "sha256:b8bfcca8c25a2bb253e0e0b0adaf8c00773e5e6af6fd92397576680b807e0fd8", size = 294530, upload-time = "2025-04-14T10:17:01.271Z" },
+]
+
+[package.optional-dependencies]
+grpc = [
+    { name = "grpcio" },
+]
+
+[[package]]
+name = "grpc-google-iam-v1"
+version = "0.14.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "googleapis-common-protos", extra = ["grpc"] },
+    { name = "grpcio" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/4e/8d0ca3b035e41fe0b3f31ebbb638356af720335e5a11154c330169b40777/grpc_google_iam_v1-0.14.2.tar.gz", hash = "sha256:b3e1fc387a1a329e41672197d0ace9de22c78dd7d215048c4c78712073f7bd20", size = 16259, upload-time = "2025-03-17T11:40:23.586Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/66/6f/dd9b178aee7835b96c2e63715aba6516a9d50f6bebbd1cc1d32c82a2a6c3/grpc_google_iam_v1-0.14.2-py3-none-any.whl", hash = "sha256:a3171468459770907926d56a440b2bb643eec1d7ba215f48f3ecece42b4d8351", size = 19242, upload-time = "2025-03-17T11:40:22.648Z" },
 ]
 
 [[package]]
