@@ -316,7 +316,7 @@ For comparison with the clean room approach, this project also includes automati
 ### Quick Setup
 
 ```bash
-python setup_analytics_hub.py \
+python setup_ah_dcx.py \
     --provider-project-id your-provider-project \
     --merchant-project-id your-merchant-project \
     --subscriber-email merchant-user@example.com
@@ -324,7 +324,7 @@ python setup_analytics_hub.py \
 
 This script automates the creation of a data exchange, listing, and access permissions, enabling the merchant to directly access the provider's data through Analytics Hub.
 
-**📖 For detailed instructions, troubleshooting, and demo tips, see: [Analytics Hub Setup Guide](analytics_hub_readme.md)**
+**📖 For detailed instructions, troubleshooting, and demo tips, see: [Analytics Hub Setup Guide](ah_dcx_readme.md)**
 
 ## 6. Generated Schemas
 

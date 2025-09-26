@@ -7,7 +7,7 @@ and listing, enabling the e-wallet provider to share their data with the merchan
 through a normal data exchange (not a clean room).
 
 Usage:
-    uv run python dcr_data_generator/setup_analytics_hub.py \
+    uv run python dcr_data_generator/setup_ah_dcx.py \
         --provider-project-id your-provider-project \
         --merchant-project-id your-merchant-project \
         --location US \
@@ -146,13 +146,13 @@ def share_listing_with_merchant(
 
     try:
         # Get current IAM policy
-        get_policy_request = iam_policy_pb2.GetIamPolicyRequest(
+        get_policy_request = iam_policy_pb2.GetIamPolicyRequest(  # pylint: disable=no-member
             resource=listing_name
         )
         current_policy = client.get_iam_policy(request=get_policy_request)
 
         # Add the subscriber role binding
-        binding = policy_pb2.Binding(
+        binding = policy_pb2.Binding(  # pylint: disable=no-member
             role="roles/analyticshub.subscriber",
             members=[f"user:{subscriber_email}"]
         )
@@ -177,7 +177,7 @@ def share_listing_with_merchant(
             print(f"✓ Created new subscriber binding for {subscriber_email}")
 
         # Set the updated policy
-        set_policy_request = iam_policy_pb2.SetIamPolicyRequest(
+        set_policy_request = iam_policy_pb2.SetIamPolicyRequest(  # pylint: disable=no-member
             resource=listing_name,
             policy=current_policy
         )

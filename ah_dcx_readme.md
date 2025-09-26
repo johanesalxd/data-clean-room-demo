@@ -1,10 +1,10 @@
 # BigQuery Analytics Hub Setup - Normal Data Exchange
 
-This document explains how to use the `setup_analytics_hub.py` script to automate the creation of a BigQuery Analytics Hub data exchange for normal data sharing (not a clean room).
+This document explains how to use the `setup_ah_dcx.py` script to automate the creation of a BigQuery Analytics Hub data exchange for normal data sharing (not a clean room).
 
 ## Overview
 
-The `setup_analytics_hub.py` script automates the complete setup of a BigQuery Analytics Hub data exchange where the **e-wallet provider** shares their data with the **merchant** through a normal data exchange. This enables direct access to the provider's data without the privacy protections of a clean room.
+The `setup_ah_dcx.py` script automates the complete setup of a BigQuery Analytics Hub data exchange where the **e-wallet provider** shares their data with the **merchant** through a normal data exchange. This enables direct access to the provider's data without the privacy protections of a clean room.
 
 ### What the Script Does
 
@@ -52,7 +52,7 @@ uv run python -m dcr_data_generator.main --merchant-project-id your-merchant-pro
 ### Basic Command
 
 ```bash
-uv run python dcr_data_generator/setup_analytics_hub.py \
+uv run python dcr_data_generator/setup_ah_dcx.py \
     --provider-project-id your-provider-project \
     --merchant-project-id your-merchant-project \
     --subscriber-email merchant-user@example.com
@@ -72,7 +72,7 @@ uv run python dcr_data_generator/setup_analytics_hub.py \
 ### Example with Custom Parameters
 
 ```bash
-uv run python dcr_data_generator/setup_analytics_hub.py \
+uv run python dcr_data_generator/setup_ah_dcx.py \
     --provider-project-id ewallet-provider-project \
     --merchant-project-id merchant-analytics-project \
     --location EU \
