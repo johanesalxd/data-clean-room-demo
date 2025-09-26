@@ -2,18 +2,19 @@
 """
 Analytics Hub Setup Script for BigQuery Data Clean Room (DCR) Demo
 
-This script automates the creation of a BigQuery Analytics Hub data exchange
-and a DCR-enabled listing. This allows the e-wallet provider to share their
-data with the merchant in a privacy-preserving manner.
+This script automates the creation of a BigQuery Analytics Hub data clean room
+and DCR-enabled listings with privacy-enforced views. This enables privacy-preserving
+data sharing between parties with automatic analysis rule enforcement.
 
 Usage:
     uv run python dcr_data_generator/setup_ah_dcr.py \
-        --provider-project-id your-provider-project \
-        --merchant-project-id your-merchant-project \
-        --location US \
-        --exchange-id dcr_exchange \
-        --listing-id dcr_listing \
-        --subscriber-email merchant-user@example.com
+        --sharing-project-id your-project-id \
+        --subscriber-email user@example.com \
+        --dataset-to-share ewallet_provider \
+        --table-to-share provider_users \
+        --listing-id provider_users_listing \
+        --listing-display-name "DCR Provider Users Table" \
+        --exchange-id provider_dcr_exchange
 """
 
 import argparse
@@ -262,67 +263,74 @@ def create_dcr_listing(
             raise
 
 
-def share_listing_with_merchant(
+def grant_dcr_access(
     client: bigquery_analyticshub_v1.AnalyticsHubServiceClient,
-    listing_name: str,
+    exchange_name: str,
     subscriber_email: str
 ) -> None:
     """
-    Grant the merchant access to the listing by setting IAM policy.
+    Grant subscriber access to the DCR by setting IAM policy on the exchange.
+
+    DCRs require exchange-level permissions with both subscriptionOwner and subscriber roles.
 
     Args:
         client: The Analytics Hub service client
-        listing_name: The full resource name of the listing
-        subscriber_email: The email address of the merchant user/group
+        exchange_name: The full resource name of the DCR exchange
+        subscriber_email: The email address of the subscriber user/group
     """
     from google.iam.v1 import iam_policy_pb2
     from google.iam.v1 import policy_pb2
 
-    print(f"Granting access to {subscriber_email}...")
+    print(f"Granting DCR access to {subscriber_email}...")
 
     try:
-        # Get current IAM policy
-        get_policy_request = iam_policy_pb2.GetIamPolicyRequest(  # pylint: disable=no-member
-            resource=listing_name
+        # Get current IAM policy on the exchange (not listing)
+        get_policy_request = iam_policy_pb2.GetIamPolicyRequest(
+            resource=exchange_name
         )
         current_policy = client.get_iam_policy(request=get_policy_request)
 
-        # Add the subscriber role binding
-        binding = policy_pb2.Binding(  # pylint: disable=no-member
-            role="roles/analyticshub.subscriber",
-            members=[f"user:{subscriber_email}"]
-        )
+        # DCRs require both subscriptionOwner and subscriber roles
+        required_roles = [
+            "roles/analyticshub.subscriptionOwner",
+            "roles/analyticshub.subscriber"
+        ]
 
-        # Check if binding already exists
-        existing_binding = None
-        for b in current_policy.bindings:
-            if b.role == "roles/analyticshub.subscriber":
-                existing_binding = b
-                break
+        for role in required_roles:
+            # Check if binding already exists for this role
+            existing_binding = None
+            for b in current_policy.bindings:
+                if b.role == role:
+                    existing_binding = b
+                    break
 
-        if existing_binding:
-            if f"user:{subscriber_email}" not in existing_binding.members:
-                existing_binding.members.append(f"user:{subscriber_email}")
-                print(
-                    f"✓ Added {subscriber_email} to existing subscriber binding")
+            if existing_binding:
+                if f"user:{subscriber_email}" not in existing_binding.members:
+                    existing_binding.members.append(f"user:{subscriber_email}")
+                    print(
+                        f"✓ Added {subscriber_email} to existing {role} binding")
+                else:
+                    print(f"⚠ {subscriber_email} already has {role}")
             else:
-                print(f"⚠ {subscriber_email} already has subscriber access")
-                return
-        else:
-            current_policy.bindings.append(binding)
-            print(f"✓ Created new subscriber binding for {subscriber_email}")
+                # Create new binding for this role
+                binding = policy_pb2.Binding(
+                    role=role,
+                    members=[f"user:{subscriber_email}"]
+                )
+                current_policy.bindings.append(binding)
+                print(f"✓ Created new {role} binding for {subscriber_email}")
 
-        # Set the updated policy
-        set_policy_request = iam_policy_pb2.SetIamPolicyRequest(  # pylint: disable=no-member
-            resource=listing_name,
+        # Set the updated policy on the exchange
+        set_policy_request = iam_policy_pb2.SetIamPolicyRequest(
+            resource=exchange_name,
             policy=current_policy
         )
 
         client.set_iam_policy(request=set_policy_request)
-        print(f"✓ IAM policy updated successfully")
+        print(f"✓ DCR exchange permissions updated successfully")
 
     except GoogleCloudError as e:
-        print(f"✗ Error setting IAM policy: {e}")
+        print(f"✗ Error setting DCR exchange permissions: {e}")
         raise
 
 
@@ -420,10 +428,10 @@ def main():
             listing_display_name=args.listing_display_name
         )
 
-        # Step 3: Share with Merchant
-        share_listing_with_merchant(
+        # Step 3: Grant DCR Access
+        grant_dcr_access(
             client=client,
-            listing_name=listing_name,
+            exchange_name=dcr_name,
             subscriber_email=args.subscriber_email
         )
 
@@ -436,12 +444,18 @@ def main():
         print()
         print("Next steps for the subscriber:")
         print(
-            f"1. As '{args.subscriber_email}', go to Analytics Hub in the subscriber's GCP project.")
+            f"IMPORTANT: {args.subscriber_email} needs these permissions in their OWN project:")
+        print("   • roles/bigquery.dataEditor (or bigquery.datasets.create permission)")
+        print("   • Go to IAM in the subscriber's project and grant this role")
+        print()
+        print("Then, to subscribe to the DCR:")
+        print("1. Go to BigQuery console (not Analytics Hub) in the subscriber's project")
+        print("2. Click 'Add data' in the Explorer pane")
+        print("3. Select 'Sharing (Analytics Hub)'")
+        print("4. Filter for 'Clean rooms' to find this DCR")
         print(
-            f"2. Browse available listings and find '{args.listing_display_name}'.")
-        print("3. Subscribe to create a linked dataset.")
-        print("4. Run queries that comply with the DCR's privacy policy.")
-        print("   Direct access to raw data will be denied.")
+            f"5. Subscribe to '{args.listing_display_name}' to create a linked dataset")
+        print("6. Run queries that comply with the DCR's privacy policy")
         print("=" * 70)
 
     except Exception as e:
