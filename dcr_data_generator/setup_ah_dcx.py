@@ -3,17 +3,19 @@
 Analytics Hub Setup Script for BigQuery Normal Data Exchange (DCX) Demo
 
 This script automates the creation of a BigQuery Analytics Hub data exchange
-and listing, enabling the e-wallet provider to share their data with the merchant
-through a normal data exchange (not a clean room). This provides direct access
-to the full dataset without privacy restrictions.
+and listing, enabling one party to share a full dataset with another.
+This provides direct access to the data without the privacy restrictions of a
+Data Clean Room, and is suitable for trusted partnerships and use cases like
+collaborative BQML model training.
 
 Usage:
-    uv run python dcr_data_generator/setup_ah_dcx.py \
-        --sharing-project-id your-provider-project \
-        --subscriber-email merchant-user@example.com \
-        --location US \
-        --exchange-id provider_dcx_exchange \
-        --listing-id provider_data_listing
+    uv run python dcr_data_generator/setup_ah_dcx.py \\
+        --sharing-project-id your-sharing-project \\
+        --subscriber-email subscriber@example.com \\
+        --dataset-to-share ewallet_provider \\
+        --listing-id provider_full_dataset_listing \\
+        --listing-display-name "Full E-Wallet Provider Dataset" \\
+        --exchange-id provider_dcx_exchange
 """
 
 import argparse
@@ -22,6 +24,29 @@ import sys
 from google.cloud import bigquery_analyticshub_v1
 from google.cloud.bigquery_analyticshub_v1 import types
 from google.cloud.exceptions import GoogleCloudError
+
+
+def get_display_name_from_exchange_id(exchange_id: str) -> str:
+    """
+    Auto-derive a user-friendly display name from the exchange ID.
+
+    Args:
+        exchange_id: The unique ID for the exchange
+
+    Returns:
+        A human-readable display name for the exchange
+    """
+    exchange_lower = exchange_id.lower()
+
+    if "provider" in exchange_lower:
+        return "E-Wallet Provider Data Exchange"
+    elif "merchant" in exchange_lower:
+        return "Merchant Data Exchange"
+    elif "shared" in exchange_lower:
+        return "Shared Data Exchange"
+    else:
+        # Fallback for custom exchange IDs
+        return "Data Exchange"
 
 
 def create_dcx_exchange(
@@ -43,12 +68,12 @@ def create_dcx_exchange(
         The full resource name of the created exchange
     """
     parent = f"projects/{project_id}/locations/{location}"
+    display_name = get_display_name_from_exchange_id(exchange_id)
 
     exchange = types.DataExchange({
-        "display_name": "E-Wallet Provider Data Exchange",
-        "description": "Normal data exchange for collaborative analytics between merchant and e-wallet provider",
+        "display_name": display_name,
+        "description": f"Data exchange for collaborative analytics.",
         "primary_contact": "data-sharing-admin@example.com",
-        "documentation": "This exchange contains e-wallet transaction and user data for collaborative analytics with full dataset access."
     })
 
     print(f"Creating Data Exchange '{exchange_id}' in {parent}...")
@@ -77,7 +102,9 @@ def create_dcx_listing(
     client: bigquery_analyticshub_v1.AnalyticsHubServiceClient,
     exchange_name: str,
     listing_id: str,
-    sharing_project_id: str
+    sharing_project_id: str,
+    dataset_to_share: str,
+    listing_display_name: str
 ) -> str:
     """
     Create a new Listing within the Data Exchange.
@@ -87,6 +114,8 @@ def create_dcx_listing(
         exchange_name: The full resource name of the exchange
         listing_id: The unique ID for the listing
         sharing_project_id: The sharing party's GCP project ID
+        dataset_to_share: The name of the dataset to share.
+        listing_display_name: The user-friendly display name for the listing.
 
     Returns:
         The full resource name of the created listing
@@ -94,23 +123,23 @@ def create_dcx_listing(
     print(f"Creating DCX listing '{listing_id}' in exchange...")
 
     try:
-        # Create the listing using the proper request object
+        listing = types.Listing(
+            display_name=listing_display_name,
+            description=f"Full dataset share of {dataset_to_share} for collaborative analytics.",
+            primary_contact="data-sharing-admin@example.com",
+            bigquery_dataset=types.Listing.BigQueryDatasetSource(
+                dataset=f"projects/{sharing_project_id}/datasets/{dataset_to_share}"
+            ),
+            categories=[
+                types.Listing.Category.CATEGORY_FINANCIAL,
+                types.Listing.Category.CATEGORY_RETAIL
+            ]
+        )
+
         request = types.CreateListingRequest(
             parent=exchange_name,
             listing_id=listing_id,
-            listing={
-                "display_name": "DCX E-Wallet Provider Dataset",
-                "description": "Complete e-wallet provider dataset for collaborative analytics between merchant and e-wallet provider",
-                "primary_contact": "data-sharing-admin@example.com",
-                "documentation": "This listing provides direct access to the ewallet_provider dataset containing provider_users and transactions tables.",
-                "bigquery_dataset": types.Listing.BigQueryDatasetSource({
-                    "dataset": f"projects/{sharing_project_id}/datasets/ewallet_provider"
-                }),
-                "categories": [
-                    types.Listing.Category.CATEGORY_FINANCIAL,
-                    types.Listing.Category.CATEGORY_RETAIL
-                ]
-            }
+            listing=listing
         )
 
         operation = client.create_listing(request=request)
@@ -146,13 +175,13 @@ def grant_dcx_access(
 
     try:
         # Get current IAM policy
-        get_policy_request = iam_policy_pb2.GetIamPolicyRequest(  # pylint: disable=no-member
+        get_policy_request = iam_policy_pb2.GetIamPolicyRequest(
             resource=listing_name
         )
         current_policy = client.get_iam_policy(request=get_policy_request)
 
         # Add the subscriber role binding
-        binding = policy_pb2.Binding(  # pylint: disable=no-member
+        binding = policy_pb2.Binding(
             role="roles/analyticshub.subscriber",
             members=[f"user:{subscriber_email}"]
         )
@@ -177,7 +206,7 @@ def grant_dcx_access(
             print(f"✓ Created new subscriber binding for {subscriber_email}")
 
         # Set the updated policy
-        set_policy_request = iam_policy_pb2.SetIamPolicyRequest(  # pylint: disable=no-member
+        set_policy_request = iam_policy_pb2.SetIamPolicyRequest(
             resource=listing_name,
             policy=current_policy
         )
@@ -201,13 +230,26 @@ def main():
         "--sharing-project-id",
         type=str,
         required=True,
-        help="The GCP project ID of the party sharing the data (e-wallet provider)"
+        help="The GCP project ID of the party sharing the data."
     )
     parser.add_argument(
         "--subscriber-email",
         type=str,
         required=True,
-        help="Email address of the data consumer who will be granted subscriber access"
+        help="Email address of the data consumer who will be granted subscriber access."
+    )
+    parser.add_argument(
+        "--dataset-to-share",
+        type=str,
+        required=True,
+        choices=['ewallet_provider', 'merchant_provider'],
+        help="The name of the dataset to share."
+    )
+    parser.add_argument(
+        "--listing-display-name",
+        type=str,
+        required=True,
+        help="The user-friendly display name for the listing."
     )
     parser.add_argument(
         "--location",
@@ -218,14 +260,14 @@ def main():
     parser.add_argument(
         "--exchange-id",
         type=str,
-        default="provider_dcx_exchange",
-        help="Unique ID for the data exchange (default: provider_dcx_exchange)"
+        required=True,
+        help="Unique ID for the data exchange (e.g., 'provider_dcx_exchange')."
     )
     parser.add_argument(
         "--listing-id",
         type=str,
-        default="provider_data_listing",
-        help="Unique ID for the data listing (default: provider_data_listing)"
+        required=True,
+        help="Unique ID for the data listing (e.g., 'provider_full_dataset_listing')."
     )
 
     args = parser.parse_args()
@@ -257,7 +299,9 @@ def main():
             client=client,
             exchange_name=exchange_name,
             listing_id=args.listing_id,
-            sharing_project_id=args.sharing_project_id
+            sharing_project_id=args.sharing_project_id,
+            dataset_to_share=args.dataset_to_share,
+            listing_display_name=args.listing_display_name
         )
 
         # Step 3: Grant Access
@@ -276,7 +320,8 @@ def main():
         print()
         print("Next steps for the subscriber:")
         print(f"1. Go to Analytics Hub in the subscriber's project")
-        print("2. Browse available listings and find 'DCX E-Wallet Provider Dataset'")
+        print(
+            f"2. Browse available listings and find '{args.listing_display_name}'")
         print("3. Subscribe to create a linked dataset in their project")
         print("4. Query the full dataset directly without privacy restrictions")
         print("=" * 70)

@@ -167,18 +167,19 @@ This section demonstrates a realistic and powerful machine learning use case whe
 
 *   **Business Goal:** The e-wallet provider wants to identify which of their customers are most likely to upgrade to a 'Premium' or 'Business' account tier. This allows them to target marketing campaigns for premium services more effectively and increase revenue through upselling.
 
-*   **The Data Clean Room Advantage:**
+*   **The Data Sharing Advantage (Data Exchange vs. Data Clean Room):**
     *   The **e-wallet provider** has basic account information about their users: `account_tier` and `is_verified_user`.
     *   The **merchant** has rich demographic and behavioral data: `age`, `gender`, `state`, `country`, `traffic_source`, and shopping patterns.
-    *   In the DCR, the provider can **enrich their limited data** with the merchant's rich demographic signals by joining on the common `email` key. This allows them to build a much more accurate customer segmentation model without either side exposing their full customer datasets.
+    *   **Important Note:** This collaborative ML use case is suitable for a standard **Data Exchange (DCX)**, not a Data Clean Room (DCR). The `CREATE MODEL` statement requires saving query results, which is a form of data egress that DCRs are specifically designed to block for security. In a trusted partnership, a DCX allows for this kind of powerful collaboration.
 
 *   **ML Approach:** The provider will train a **classification model** to predict `account_tier`. The workflow is as follows:
-    1.  The provider joins their `provider_users` table with the merchant's `users` table on `email`.
-    2.  They use the merchant's rich demographic features (`age`, `gender`, `state`, `traffic_source`) as predictive signals.
-    3.  They use their own `account_tier` as the label to predict.
-    4.  The trained model is saved back into the provider's project for their own use.
+    1.  The provider subscribes to the merchant's `users` dataset via a standard Data Exchange.
+    2.  The provider joins their own `provider_users` table with the merchant's shared `users` table on `hashed_email`.
+    3.  They use the merchant's rich demographic features (`age`, `gender`, `state`, `traffic_source`) as predictive signals.
+    4.  They use their own `account_tier` as the label to predict.
+    5.  The trained model is saved back into the provider's project for their own use.
 
-*   **Collaborative ML Workflow:**
+*   **Collaborative ML Workflow (via Data Exchange):**
     ```mermaid
     graph TD
         subgraph MerchantProject [Merchant's GCP Project]
@@ -189,20 +190,22 @@ This section demonstrates a realistic and powerful machine learning use case whe
         subgraph ProviderProject [Provider's GCP Project]
             direction TB
             ProviderUsers(ewallet_provider.provider_users)
-            Model(Account Tier Predictor)
-        end
-
-        subgraph DCR [Data Clean Room]
-            direction TB
             CreateModel[CREATE MODEL]
+            Model(Account Tier Predictor)
+
+            CreateModel -- "Saves to" --> Model
         end
 
-        Users -- "email" --> CreateModel
-        ProviderUsers -- "email, account_tier" --> CreateModel
+        subgraph DCX [Data Exchange]
+            direction LR
+            SharedData((Shared Merchant Data))
+        end
 
-        CreateModel -- "Saves to" --> Model
+        Users -- "Publishes to" --> DCX
+        DCX -- "Subscribed by" --> CreateModel
+        ProviderUsers -- "Joins with" --> CreateModel
 
-        style DCR fill:#e6f2ff,stroke:#0066cc,stroke-width:2px,stroke-dasharray: 5 5
+        style DCX fill:#fdeedc,stroke:#ff8c00,stroke-width:2px,stroke-dasharray: 5 5
     ```
 
 *   **Example `CREATE MODEL` Query (using training data):**
