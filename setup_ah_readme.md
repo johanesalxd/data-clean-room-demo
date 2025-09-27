@@ -43,9 +43,11 @@ The user or service account running the scripts must have the following IAM role
 -   `roles/bigquery.dataEditor` (to create the necessary authorized views for DCRs)
 
 ### 4. Generate Demo Data
-Before setting up sharing, you must first generate the synthetic datasets:
+Before setting up sharing, you must first generate the synthetic datasets by running the `main.py` script from within the `dcr_data_generator` directory:
 ```bash
-uv run python -m dcr_data_generator.main --merchant-project-id your-merchant-project --provider-project-id your-provider-project
+cd dcr_data_generator
+uv run python main.py --merchant-project-id your-merchant-project --provider-project-id your-provider-project
+cd ..
 ```
 
 ---
@@ -74,7 +76,7 @@ Use the `setup_ah_dcr.py` script to create a listing with privacy controls. Each
 
 **Example 1: Provider shares the `provider_users` table with the Merchant**
 ```bash
-uv run python dcr_data_generator/setup_ah_dcr.py \
+uv run python setup_ah_dcr.py \
     --sharing-project-id your-provider-project-id \
     --subscriber-email merchant-subscriber-email@example.com \
     --dataset-to-share ewallet_provider \
@@ -86,7 +88,7 @@ uv run python dcr_data_generator/setup_ah_dcr.py \
 
 **Example 2: Merchant shares the `users` table with the Provider**
 ```bash
-uv run python dcr_data_generator/setup_ah_dcr.py \
+uv run python setup_ah_dcr.py \
     --sharing-project-id your-merchant-project-id \
     --subscriber-email provider-subscriber-email@example.com \
     --dataset-to-share merchant_provider \
@@ -117,7 +119,7 @@ Use the `setup_ah_dcx.py` script to share a **full dataset** directly. This is r
 
 **Example 1: Provider shares the `ewallet_provider` dataset with the Merchant**
 ```bash
-uv run python dcr_data_generator/setup_ah_dcx.py \
+uv run python setup_ah_dcx.py \
     --sharing-project-id your-provider-project-id \
     --subscriber-email merchant-subscriber-email@example.com \
     --dataset-to-share ewallet_provider \
@@ -129,7 +131,7 @@ uv run python dcr_data_generator/setup_ah_dcx.py \
 **Example 2: Merchant shares the `merchant_provider` dataset with the Provider**
 This enables the BQML use case where the provider needs to join their data with the merchant's data to train a model.
 ```bash
-uv run python dcr_data_generator/setup_ah_dcx.py \
+uv run python setup_ah_dcx.py \
     --sharing-project-id your-merchant-project-id \
     --subscriber-email provider-subscriber-email@example.com \
     --dataset-to-share merchant_provider \
