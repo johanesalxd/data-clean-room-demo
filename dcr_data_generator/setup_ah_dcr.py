@@ -111,7 +111,7 @@ def create_privacy_view(
     listing_id: str
 ) -> str:
     """
-    Create a view with analysis rules for DCR sharing.
+    Create an authorized view with analysis rules for DCR sharing.
 
     Args:
         sharing_project_id: The GCP project ID of the party sharing the data
@@ -165,22 +165,65 @@ def create_privacy_view(
     else:
         raise ValueError(f"Unsupported dataset: {dataset_to_share}")
 
-    # Create the view with analysis rules
+    # Create the view with analysis rules using a DDL query
     import json
     privacy_policy_json = json.dumps(privacy_policy)
 
+    view_id = f"{sharing_project_id}.{dataset_to_share}.{view_name}"
+    table_id = f"{sharing_project_id}.{dataset_to_share}.{table_to_share}"
+
     query = f"""
-    CREATE OR REPLACE VIEW `{sharing_project_id}.{dataset_to_share}.{view_name}`
+    CREATE OR REPLACE VIEW `{view_id}`
     OPTIONS(
         privacy_policy = '{privacy_policy_json}'
     )
-    AS SELECT * FROM `{sharing_project_id}.{dataset_to_share}.{table_to_share}`
+    AS SELECT * FROM `{table_id}`
     """
 
     print(
         f"Creating privacy-enforced view '{view_name}' for table '{table_to_share}'...")
-    client.query(query).result()
+    client.query(query).result()  # Wait for the job to complete
     print(f"✓ Privacy view created: {dataset_to_share}.{view_name}")
+
+    # Authorize the view to access the source dataset.
+    # This is the crucial step for DCR to work.
+    try:
+        source_dataset = client.get_dataset(client.dataset(
+            dataset_to_share, project=sharing_project_id))
+        access_entries = list(source_dataset.access_entries)
+
+        view_ref = client.get_table(view_id).reference
+
+        # Check if the authorization already exists to avoid duplication errors.
+        is_authorized = False
+        for entry in access_entries:
+            # The entity_id can be a dict for views or a string for other types.
+            if entry.entity_type == 'view' and isinstance(entry.entity_id, dict):
+                if (entry.entity_id.get('projectId') == view_ref.project and
+                    entry.entity_id.get('datasetId') == view_ref.dataset_id and
+                        entry.entity_id.get('tableId') == view_ref.table_id):
+                    is_authorized = True
+                    break
+
+        if not is_authorized:
+            # Create a new access entry for the view.
+            # The python client requires setting the 'view' property on a blank AccessEntry.
+            entry = bigquery.AccessEntry(
+                role=None, entity_type="view", entity_id=None)
+            entry.view = view_ref
+            access_entries.append(entry)
+
+            source_dataset.access_entries = access_entries
+            client.update_dataset(source_dataset, ["access_entries"])
+            print(
+                f"✓ Authorized view '{view_name}' to access dataset '{dataset_to_share}'.")
+        else:
+            print(
+                f"✓ View '{view_name}' is already authorized to access dataset '{dataset_to_share}'.")
+
+    except Exception as e:
+        print(f"⚠ Warning: Could not configure view authorization: {e}")
+        print("  DCR may not function correctly without view authorization.")
 
     return view_name
 
