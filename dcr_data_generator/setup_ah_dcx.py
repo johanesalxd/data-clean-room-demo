@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Analytics Hub Setup Script for BigQuery Data Clean Room Demo
+Analytics Hub Setup Script for BigQuery Normal Data Exchange (DCX) Demo
 
 This script automates the creation of a BigQuery Analytics Hub data exchange
 and listing, enabling the e-wallet provider to share their data with the merchant
-through a normal data exchange (not a clean room).
+through a normal data exchange (not a clean room). This provides direct access
+to the full dataset without privacy restrictions.
 
 Usage:
     uv run python dcr_data_generator/setup_ah_dcx.py \
-        --provider-project-id your-provider-project \
-        --merchant-project-id your-merchant-project \
+        --sharing-project-id your-provider-project \
+        --subscriber-email merchant-user@example.com \
         --location US \
-        --exchange-id demo_exchange \
-        --listing-id provider_data_listing \
-        --subscriber-email merchant-user@example.com
+        --exchange-id provider_dcx_exchange \
+        --listing-id provider_data_listing
 """
 
 import argparse
@@ -24,18 +24,18 @@ from google.cloud.bigquery_analyticshub_v1 import types
 from google.cloud.exceptions import GoogleCloudError
 
 
-def create_data_exchange(
+def create_dcx_exchange(
     client: bigquery_analyticshub_v1.AnalyticsHubServiceClient,
     project_id: str,
     location: str,
     exchange_id: str
 ) -> str:
     """
-    Create a new Data Exchange in the provider's project.
+    Create a new Data Exchange in the sharing party's project.
 
     Args:
         client: The Analytics Hub service client
-        project_id: The provider's GCP project ID
+        project_id: The sharing party's GCP project ID
         location: The GCP location (e.g., 'US')
         exchange_id: The unique ID for the exchange
 
@@ -46,9 +46,9 @@ def create_data_exchange(
 
     exchange = types.DataExchange({
         "display_name": "E-Wallet Provider Data Exchange",
-        "description": "Data exchange for sharing e-wallet provider data with merchant partners",
-        "primary_contact": "provider-admin@example.com",
-        "documentation": "This exchange contains e-wallet transaction and user data for collaborative analytics."
+        "description": "Normal data exchange for collaborative analytics between merchant and e-wallet provider",
+        "primary_contact": "data-sharing-admin@example.com",
+        "documentation": "This exchange contains e-wallet transaction and user data for collaborative analytics with full dataset access."
     })
 
     print(f"Creating Data Exchange '{exchange_id}' in {parent}...")
@@ -73,11 +73,11 @@ def create_data_exchange(
             raise
 
 
-def create_listing(
+def create_dcx_listing(
     client: bigquery_analyticshub_v1.AnalyticsHubServiceClient,
     exchange_name: str,
     listing_id: str,
-    provider_project_id: str
+    sharing_project_id: str
 ) -> str:
     """
     Create a new Listing within the Data Exchange.
@@ -86,12 +86,12 @@ def create_listing(
         client: The Analytics Hub service client
         exchange_name: The full resource name of the exchange
         listing_id: The unique ID for the listing
-        provider_project_id: The provider's GCP project ID
+        sharing_project_id: The sharing party's GCP project ID
 
     Returns:
         The full resource name of the created listing
     """
-    print(f"Creating Listing '{listing_id}' in exchange...")
+    print(f"Creating DCX listing '{listing_id}' in exchange...")
 
     try:
         # Create the listing using the proper request object
@@ -99,12 +99,12 @@ def create_listing(
             parent=exchange_name,
             listing_id=listing_id,
             listing={
-                "display_name": "E-Wallet Provider Dataset",
-                "description": "Complete e-wallet provider dataset including user profiles and transaction data",
-                "primary_contact": "provider-admin@example.com",
-                "documentation": "This listing provides access to the ewallet_provider dataset containing provider_users and transactions tables.",
+                "display_name": "DCX E-Wallet Provider Dataset",
+                "description": "Complete e-wallet provider dataset for collaborative analytics between merchant and e-wallet provider",
+                "primary_contact": "data-sharing-admin@example.com",
+                "documentation": "This listing provides direct access to the ewallet_provider dataset containing provider_users and transactions tables.",
                 "bigquery_dataset": types.Listing.BigQueryDatasetSource({
-                    "dataset": f"projects/{provider_project_id}/datasets/ewallet_provider"
+                    "dataset": f"projects/{sharing_project_id}/datasets/ewallet_provider"
                 }),
                 "categories": [
                     types.Listing.Category.CATEGORY_FINANCIAL,
@@ -114,7 +114,7 @@ def create_listing(
         )
 
         operation = client.create_listing(request=request)
-        print(f"✓ Listing created successfully: {operation.name}")
+        print(f"✓ DCX listing created successfully: {operation.name}")
         return operation.name
 
     except GoogleCloudError as e:
@@ -126,18 +126,18 @@ def create_listing(
             raise
 
 
-def share_listing_with_merchant(
+def grant_dcx_access(
     client: bigquery_analyticshub_v1.AnalyticsHubServiceClient,
     listing_name: str,
     subscriber_email: str
 ) -> None:
     """
-    Grant the merchant access to the listing by setting IAM policy.
+    Grant the subscriber access to the listing by setting IAM policy.
 
     Args:
         client: The Analytics Hub service client
         listing_name: The full resource name of the listing
-        subscriber_email: The email address of the merchant user/group
+        subscriber_email: The email address of the subscriber user/group
     """
     from google.iam.v1 import iam_policy_pb2
     from google.iam.v1 import policy_pb2
@@ -195,19 +195,19 @@ def main():
     Main function to orchestrate the Analytics Hub setup.
     """
     parser = argparse.ArgumentParser(
-        description="Set up BigQuery Analytics Hub for data sharing demo"
+        description="Set up BigQuery Analytics Hub for normal data exchange (DCX) demo"
     )
     parser.add_argument(
-        "--provider-project-id",
+        "--sharing-project-id",
         type=str,
         required=True,
-        help="The GCP project ID of the data provider (e-wallet provider)"
+        help="The GCP project ID of the party sharing the data (e-wallet provider)"
     )
     parser.add_argument(
-        "--merchant-project-id",
+        "--subscriber-email",
         type=str,
         required=True,
-        help="The GCP project ID of the data consumer (merchant)"
+        help="Email address of the data consumer who will be granted subscriber access"
     )
     parser.add_argument(
         "--location",
@@ -218,8 +218,8 @@ def main():
     parser.add_argument(
         "--exchange-id",
         type=str,
-        default="demo_exchange",
-        help="Unique ID for the data exchange (default: demo_exchange)"
+        default="provider_dcx_exchange",
+        help="Unique ID for the data exchange (default: provider_dcx_exchange)"
     )
     parser.add_argument(
         "--listing-id",
@@ -227,24 +227,17 @@ def main():
         default="provider_data_listing",
         help="Unique ID for the data listing (default: provider_data_listing)"
     )
-    parser.add_argument(
-        "--subscriber-email",
-        type=str,
-        required=True,
-        help="Email address of the merchant user/group to grant access"
-    )
 
     args = parser.parse_args()
 
     print("=" * 70)
-    print("BigQuery Analytics Hub Setup - Normal Data Exchange")
+    print("BigQuery Analytics Hub Setup - Normal Data Exchange (DCX)")
     print("=" * 70)
-    print(f"Provider Project: {args.provider_project_id}")
-    print(f"Merchant Project: {args.merchant_project_id}")
+    print(f"Sharing Project: {args.sharing_project_id}")
+    print(f"Subscriber Email: {args.subscriber_email}")
     print(f"Location: {args.location}")
     print(f"Exchange ID: {args.exchange_id}")
     print(f"Listing ID: {args.listing_id}")
-    print(f"Subscriber Email: {args.subscriber_email}")
     print()
 
     try:
@@ -252,40 +245,40 @@ def main():
         client = bigquery_analyticshub_v1.AnalyticsHubServiceClient()
 
         # Step 1: Create Data Exchange
-        exchange_name = create_data_exchange(
+        exchange_name = create_dcx_exchange(
             client=client,
-            project_id=args.provider_project_id,
+            project_id=args.sharing_project_id,
             location=args.location,
             exchange_id=args.exchange_id
         )
 
         # Step 2: Create Listing
-        listing_name = create_listing(
+        listing_name = create_dcx_listing(
             client=client,
             exchange_name=exchange_name,
             listing_id=args.listing_id,
-            provider_project_id=args.provider_project_id
+            sharing_project_id=args.sharing_project_id
         )
 
-        # Step 3: Share with Merchant
-        share_listing_with_merchant(
+        # Step 3: Grant Access
+        grant_dcx_access(
             client=client,
             listing_name=listing_name,
             subscriber_email=args.subscriber_email
         )
 
         print("\n" + "=" * 70)
-        print("✓ SUCCESS: Analytics Hub setup completed!")
+        print("✓ SUCCESS: Normal Data Exchange (DCX) setup completed!")
         print("=" * 70)
-        print(f"Exchange: {exchange_name}")
+        print(f"Data Exchange: {exchange_name}")
         print(f"Listing: {listing_name}")
         print(f"Subscriber: {args.subscriber_email}")
         print()
-        print("Next steps for the merchant:")
-        print(
-            f"1. Go to Analytics Hub in the {args.merchant_project_id} project")
-        print("2. Browse available listings and find the 'E-Wallet Provider Dataset'")
+        print("Next steps for the subscriber:")
+        print(f"1. Go to Analytics Hub in the subscriber's project")
+        print("2. Browse available listings and find 'DCX E-Wallet Provider Dataset'")
         print("3. Subscribe to create a linked dataset in their project")
+        print("4. Query the full dataset directly without privacy restrictions")
         print("=" * 70)
 
     except Exception as e:

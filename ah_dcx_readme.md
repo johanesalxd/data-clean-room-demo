@@ -1,16 +1,16 @@
-# BigQuery Analytics Hub Setup - Normal Data Exchange
+# BigQuery Analytics Hub Setup - Normal Data Exchange (DCX)
 
-This document explains how to use the `setup_ah_dcx.py` script to automate the creation of a BigQuery Analytics Hub data exchange for normal data sharing (not a clean room).
+This document explains how to use the `setup_ah_dcx.py` script to automate the creation of a BigQuery Analytics Hub data exchange for normal data sharing (not a clean room). This provides direct access to the full dataset without privacy restrictions.
 
 ## Overview
 
-The `setup_ah_dcx.py` script automates the complete setup of a BigQuery Analytics Hub data exchange where the **e-wallet provider** shares their data with the **merchant** through a normal data exchange. This enables direct access to the provider's data without the privacy protections of a clean room.
+The `setup_ah_dcx.py` script automates the complete setup of a BigQuery Analytics Hub data exchange where the **e-wallet provider** shares their data with the **merchant** through a normal data exchange. This enables collaborative analytics between merchant and e-wallet provider with full dataset access.
 
 ### What the Script Does
 
-1. **Creates a Data Exchange** in the provider's project
-2. **Creates a Listing** within that exchange, pointing to the `ewallet_provider` dataset
-3. **Grants Access** to the merchant by setting appropriate IAM policies
+1. **Creates a Data Exchange** in the sharing party's project
+2. **Creates a DCX Listing** within that exchange, pointing to the `ewallet_provider` dataset
+3. **Grants Access** to the subscriber by setting appropriate IAM policies
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ gcloud auth application-default login
 
 ### 3. Required Permissions
 
-The user running the script must have the following IAM roles in the **provider's project**:
+The user running the script must have the following IAM roles in the **sharing party's project**:
 - `roles/analyticshub.admin` (to create exchanges and listings)
 - `roles/bigquery.dataViewer` (to access the dataset being shared)
 
@@ -53,8 +53,7 @@ uv run python -m dcr_data_generator.main --merchant-project-id your-merchant-pro
 
 ```bash
 uv run python dcr_data_generator/setup_ah_dcx.py \
-    --provider-project-id your-provider-project \
-    --merchant-project-id your-merchant-project \
+    --sharing-project-id your-provider-project \
     --subscriber-email merchant-user@example.com
 ```
 
@@ -62,49 +61,50 @@ uv run python dcr_data_generator/setup_ah_dcx.py \
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `--provider-project-id` | ✅ | - | The GCP project ID of the data provider (e-wallet provider) |
-| `--merchant-project-id` | ✅ | - | The GCP project ID of the data consumer (merchant) |
-| `--subscriber-email` | ✅ | - | Email address of the merchant user/group to grant access |
+| `--sharing-project-id` | ✅ | - | The GCP project ID of the party sharing the data (e-wallet provider) |
+| `--subscriber-email` | ✅ | - | Email address of the data consumer who will be granted subscriber access |
 | `--location` | ❌ | `US` | The GCP location for Analytics Hub resources |
-| `--exchange-id` | ❌ | `demo_exchange` | Unique ID for the data exchange |
+| `--exchange-id` | ❌ | `provider_dcx_exchange` | Unique ID for the data exchange |
 | `--listing-id` | ❌ | `provider_data_listing` | Unique ID for the data listing |
 
 ### Example with Custom Parameters
 
 ```bash
 uv run python dcr_data_generator/setup_ah_dcx.py \
-    --provider-project-id ewallet-provider-project \
-    --merchant-project-id merchant-analytics-project \
+    --sharing-project-id ewallet-provider-project \
     --location EU \
-    --exchange-id production_exchange \
+    --exchange-id production_dcx_exchange \
     --listing-id ewallet_dataset_v1 \
     --subscriber-email data-team@merchant.com
 ```
 
 ## What Happens When You Run the Script
 
+Each time the script runs, it performs these three steps in the context of the `--sharing-project-id`:
+
 ### Step 1: Create Data Exchange
 ```
-Creating Data Exchange 'demo_exchange' in projects/your-provider-project/locations/US...
-✓ Data Exchange created successfully: projects/your-provider-project/locations/US/dataExchanges/demo_exchange
+Creating Data Exchange 'provider_dcx_exchange' in projects/your-provider-project/locations/US...
+✓ Data Exchange created successfully: projects/your-provider-project/locations/US/dataExchanges/provider_dcx_exchange
 ```
 
-The script creates a private data exchange in the provider's project with:
+The script creates a normal data exchange in the sharing party's project with:
 - **Display Name**: "E-Wallet Provider Data Exchange"
-- **Description**: Explains the purpose of the exchange
-- **Contact**: Provider admin contact information
+- **Description**: "Normal data exchange for collaborative analytics between merchant and e-wallet provider"
+- **Contact**: "data-sharing-admin@example.com"
 
-### Step 2: Create Listing
+### Step 2: Create DCX Listing
 ```
-Creating Listing 'provider_data_listing' in exchange...
-✓ Listing created successfully: projects/your-provider-project/locations/US/dataExchanges/demo_exchange/listings/provider_data_listing
+Creating DCX listing 'provider_data_listing' in exchange...
+✓ DCX listing created successfully: projects/your-provider-project/locations/US/dataExchanges/provider_dcx_exchange/listings/provider_data_listing
 ```
 
 The script creates a listing that:
+- **Display Name**: "DCX E-Wallet Provider Dataset"
 - Points to the `ewallet_provider` dataset
 - Includes both `provider_users` and `transactions` tables
 - Is categorized under Finance and Retail
-- Contains comprehensive documentation
+- Provides direct access to the full dataset
 
 ### Step 3: Grant Access
 ```
@@ -113,24 +113,38 @@ Granting access to merchant-user@example.com...
 ✓ IAM policy updated successfully
 ```
 
-The script grants the merchant user the `roles/analyticshub.subscriber` role, allowing them to:
+The script grants the subscriber the `roles/analyticshub.subscriber` role, allowing them to:
 - Discover the listing in Analytics Hub
 - Subscribe to create a linked dataset
-- Access the shared data directly
+- Access the shared data directly without privacy restrictions
 
-## Post-Execution: Merchant Steps
+## Post-Execution: Subscriber Steps
 
-After the script completes successfully, the **merchant** needs to:
+After the script completes successfully, the **subscriber** needs to:
+
+### Success Message
+```
+✓ SUCCESS: Normal Data Exchange (DCX) setup completed!
+Data Exchange: projects/your-provider-project/locations/US/dataExchanges/provider_dcx_exchange
+Listing: projects/your-provider-project/locations/US/dataExchanges/provider_dcx_exchange/listings/provider_data_listing
+Subscriber: merchant-user@example.com
+
+Next steps for the subscriber:
+1. Go to Analytics Hub in the subscriber's project
+2. Browse available listings and find 'DCX E-Wallet Provider Dataset'
+3. Subscribe to create a linked dataset in their project
+4. Query the full dataset directly without privacy restrictions
+```
 
 ### 1. Navigate to Analytics Hub
 - Go to the Google Cloud Console
-- Switch to the **merchant's project**
+- Switch to the **subscriber's project**
 - Navigate to **BigQuery** → **Analytics Hub**
 
 ### 2. Find the Listing
 - Click on **"Browse listings"**
-- Look for **"E-Wallet Provider Dataset"**
-- The listing should be visible with the provider's project as the source
+- Look for **"DCX E-Wallet Provider Dataset"**
+- The listing should be visible with the sharing party's project as the source
 
 ### 3. Subscribe to the Listing
 - Click on the listing to view details
@@ -139,14 +153,14 @@ After the script completes successfully, the **merchant** needs to:
 - Click **"Subscribe"** to create the linked dataset
 
 ### 4. Access the Data
-Once subscribed, the merchant can query the shared data directly:
+Once subscribed, the subscriber can query the shared data directly:
 
 ```sql
--- Example: Query the shared provider data
+-- Example: Query the shared provider data (no privacy restrictions)
 SELECT
     account_tier,
     COUNT(*) as user_count
-FROM `your-merchant-project.shared_ewallet_data.provider_users`
+FROM `your-subscriber-project.shared_ewallet_data.provider_users`
 GROUP BY account_tier
 ORDER BY user_count DESC;
 ```
@@ -157,9 +171,9 @@ ORDER BY user_count DESC;
 
 To verify the setup worked correctly:
 
-1. **Check the Exchange**: Go to Analytics Hub in the provider's project and verify the exchange exists
+1. **Check the Exchange**: Go to Analytics Hub in the sharing party's project and verify the exchange exists
 2. **Check the Listing**: Verify the listing appears and shows the correct dataset
-3. **Check Permissions**: Verify the merchant user can see the listing when browsing from their project
+3. **Check Permissions**: Verify the subscriber user can see the listing when browsing from their project
 
 ## Demo Tips
 
@@ -170,14 +184,14 @@ To clean up after a demo:
 ```bash
 # Delete the listing (this will also revoke access)
 gcloud analytics-hub listings delete provider_data_listing \
-    --data-exchange=demo_exchange \
+    --data-exchange=provider_dcx_exchange \
     --location=US \
-    --project=your-provider-project
+    --project=your-sharing-project
 
 # Delete the exchange
-gcloud analytics-hub data-exchanges delete demo_exchange \
+gcloud analytics-hub data-exchanges delete provider_dcx_exchange \
     --location=US \
-    --project=your-provider-project
+    --project=your-sharing-project
 ```
 
 ---

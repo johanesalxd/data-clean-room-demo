@@ -76,7 +76,7 @@ def create_data_clean_room(
         "display_name": display_name,
         "description": "Privacy-preserving data clean room for collaborative analytics between merchant and e-wallet provider",
         "primary_contact": "data-sharing-admin@example.com",
-        "documentation": "This clean room enables secure data collaboration with automatic privacy controls and analysis rules.",
+        "documentation": "This clean room enables secure data collaboration with automatic privacy controls and analysis rules for collaborative analytics between merchant and e-wallet provider.",
         "sharing_environment_config": {
             "dcr_exchange_config": {}
         }

@@ -110,7 +110,7 @@ uv run python dcr_data_generator/setup_ah_dcr.py \
 # Command 1: Share users table
 uv run python dcr_data_generator/setup_ah_dcr.py \
     --sharing-project-id shared-dcr-project \
-    --subscriber-email provider-admin@example.com \
+    --subscriber-email data-sharing-admin@example.com \
     --dataset-to-share merchant_provider \
     --table-to-share users \
     --listing-id merchant_users_listing \
@@ -152,7 +152,7 @@ uv run python dcr_data_generator/setup_ah_dcr.py \
 # Command 1: Share users table
 uv run python dcr_data_generator/setup_ah_dcr.py \
     --sharing-project-id your-merchant-project \
-    --subscriber-email provider-admin@example.com \
+    --subscriber-email data-sharing-admin@example.com \
     --dataset-to-share merchant_provider \
     --table-to-share users \
     --listing-id merchant_users_listing \
