@@ -172,6 +172,7 @@ uv run python dcr_data_generator/setup_ah_dcr.py \
 | `--listing-display-name` | ✅ | The user-friendly display name for the listing. |
 | `--location` | ❌ | The GCP location for Analytics Hub resources (default: `US`). |
 | `--exchange-id` | ❌ | Unique ID for the data exchange. Choose based on your architecture: Option A (same for all), Option B (different per party). Default: `dcr_bi_directional_exchange` |
+| `--allow-egress` | ❌ | If set, allows query results to be saved. **Required for BQML `CREATE MODEL` jobs.** Defaults to `False`. |
 
 ## What Happens When You Run the Script
 
@@ -204,6 +205,28 @@ The script automatically applies the correct analysis rules based on the specifi
 **Analysis Rules Applied**:
 -   **List Overlap**: Must join on `hashed_email` column
 -   **Enables**: Use Case 4 (User Enrichment) and BQML training
+
+---
+
+### Special Note on BQML Training
+
+To allow a `CREATE MODEL` job to run on data from a DCR, the listing must be created with data egress enabled. This is a security consideration, as it allows the results of a query (the training data) to be materialized into a model object.
+
+To enable this for the BQML use case, you must add the `--allow-egress` flag when creating the listing for the merchant's `users` table.
+
+**Example Command for BQML-enabled Listing:**
+```bash
+# When sharing the merchant's data for the BQML use case, add --allow-egress
+uv run python dcr_data_generator/setup_ah_dcr.py \
+    --sharing-project-id your-merchant-project \
+    --subscriber-email provider-user@example.com \
+    --dataset-to-share merchant_provider \
+    --table-to-share users \
+    --listing-id merchant_users_listing_for_bqml \
+    --listing-display-name "DCR Merchant Users for BQML" \
+    --exchange-id your_dcr_exchange \
+    --allow-egress
+```
 
 **Key Privacy Protection**: Raw `SELECT *` queries are **blocked**. Only queries that comply with the analysis rules will succeed.
 

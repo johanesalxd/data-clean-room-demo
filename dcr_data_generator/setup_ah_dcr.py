@@ -235,7 +235,8 @@ def create_dcr_listing(
     sharing_project_id: str,
     dataset_to_share: str,
     table_to_share: str,
-    listing_display_name: str
+    listing_display_name: str,
+    allow_egress: bool = False
 ) -> str:
     """
     Create a BigQuery view listing with analysis rules within the Data Clean Room.
@@ -248,6 +249,7 @@ def create_dcr_listing(
         dataset_to_share: The name of the dataset containing the table
         table_to_share: The name of the specific table to share
         listing_display_name: The display name for the listing
+        allow_egress: If True, allows query results to be saved, enabling ML training.
 
     Returns:
         The full resource name of the created listing
@@ -264,33 +266,34 @@ def create_dcr_listing(
     documentation = f"Privacy-enforced view for {table_to_share} table. Analysis rules automatically restrict queries to comply with privacy policies."
 
     try:
-        listing_dict = {
-            "display_name": listing_display_name,
-            "description": f"DCR listing with analysis rules for {dataset_to_share}.{table_to_share}.",
-            "primary_contact": "data-sharing-admin@example.com",
-            "documentation": documentation,
-            "bigquery_dataset": types.Listing.BigQueryDatasetSource({
-                "dataset": f"projects/{sharing_project_id}/datasets/{dataset_to_share}",
-                "selected_resources": [
-                    types.Listing.BigQueryDatasetSource.SelectedResource({
-                        "table": view_resource
-                    })
+        # Construct the listing using the official 'types' objects
+        listing = types.Listing(
+            display_name=listing_display_name,
+            description=f"DCR listing with analysis rules for {dataset_to_share}.{table_to_share}.",
+            primary_contact="data-sharing-admin@example.com",
+            documentation=documentation,
+            bigquery_dataset=types.Listing.BigQueryDatasetSource(
+                dataset=f"projects/{sharing_project_id}/datasets/{dataset_to_share}",
+                selected_resources=[
+                    types.Listing.BigQueryDatasetSource.SelectedResource(
+                        table=view_resource
+                    )
                 ]
-            }),
-            "categories": [
+            ),
+            categories=[
                 types.Listing.Category.CATEGORY_FINANCIAL,
                 types.Listing.Category.CATEGORY_RETAIL
             ],
-            "restricted_export_config": {
-                "enabled": True,
-                "restrict_query_result": True
-            }
-        }
+            restricted_export_config=types.Listing.RestrictedExportConfig(
+                enabled=True,
+                restrict_query_result=not allow_egress
+            )
+        )
 
         request = types.CreateListingRequest(
             parent=exchange_name,
             listing_id=listing_id,
-            listing=listing_dict
+            listing=listing
         )
 
         operation = client.create_listing(request=request)
@@ -433,6 +436,11 @@ def main():
         required=True,
         help="Unique ID for the DCR listing (e.g., 'provider_to_merchant_listing')."
     )
+    parser.add_argument(
+        "--allow-egress",
+        action="store_true",
+        help="If set, allows data egress by setting restrict_query_result to False. Use for trusted ML workloads."
+    )
 
     args = parser.parse_args()
 
@@ -468,7 +476,8 @@ def main():
             sharing_project_id=args.sharing_project_id,
             dataset_to_share=args.dataset_to_share,
             table_to_share=args.table_to_share,
-            listing_display_name=args.listing_display_name
+            listing_display_name=args.listing_display_name,
+            allow_egress=args.allow_egress
         )
 
         # Step 3: Grant DCR Access
