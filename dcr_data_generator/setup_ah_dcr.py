@@ -133,7 +133,7 @@ def create_privacy_view(
             # For Use Cases 2 & 3: Aggregation threshold for user analysis
             privacy_policy = {
                 "aggregation_threshold_policy": {
-                    "threshold": 50,
+                    "threshold": 110,
                     "privacy_unit_column": "hashed_email"
                 },
                 "join_restriction_policy": {

@@ -92,7 +92,7 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
     -- This query segments customers by the provider's account tier
     -- and calculates the average order value for each tier.
     -- Results will only show tiers with sufficient user counts to meet privacy thresholds.
-    SELECT
+    SELECT WITH AGGREGATION_THRESHOLD OPTIONS(threshold=110)
         p.account_tier,
         AVG(t.transaction_amount) AS average_order_value,
         COUNT(DISTINCT u.id) AS number_of_customers
@@ -105,7 +105,6 @@ The **merchant** wants to know if customers with a higher "tier" e-wallet accoun
     JOIN
         `your-provider-project.ewallet_provider.transactions` AS t ON o.order_id = t.order_id
     GROUP BY 1
-    HAVING COUNT(DISTINCT u.id) >= 50  -- Example threshold for demo purposes
     ORDER BY 2 DESC;
     ```
 
@@ -123,7 +122,7 @@ The **merchant** wants to identify high-trust customers.
     -- This query counts the number of verified vs. unverified users
     -- who have made purchases. Results will only show if both groups
     -- meet the minimum threshold requirements.
-    SELECT
+    SELECT WITH AGGREGATION_THRESHOLD OPTIONS(threshold=110)
         p.is_verified_user,
         COUNT(DISTINCT u.id) AS number_of_customers
     FROM
@@ -131,7 +130,6 @@ The **merchant** wants to identify high-trust customers.
     JOIN
         `your-provider-project.ewallet_provider.provider_users` AS p ON u.hashed_email = p.hashed_email
     GROUP BY 1
-    HAVING COUNT(DISTINCT u.id) >= 50;  -- Example threshold for demo purposes
     ```
 
 ---
