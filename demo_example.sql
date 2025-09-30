@@ -139,6 +139,13 @@ GROUP BY
   1
 
 -- Use Case 3b with hash_tvf
+-- CREATE OR REPLACE TABLE
+--   `merchant-project-id.merchant_provider.users_temp` AS
+-- SELECT
+--   * EXCEPT (hashed_email)
+-- FROM
+--   `merchant-project-id.merchant_provider.users`;
+
 SELECT
   u.*,
   hashed.hashed_email
