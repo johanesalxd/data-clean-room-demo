@@ -310,22 +310,38 @@ This is expected and demonstrates a real-world data quality issue: the source `t
 
 This discrepancy serves as an excellent talking point during demos, highlighting the importance of robust data preparation and quality checks in data clean room implementations.
 
-## 5. Analytics Hub Setup (Normal Data Exchange)
+## 5. Analytics Hub Setup
 
-For comparison with the clean room approach, this project also includes automation for setting up a normal BigQuery Analytics Hub data exchange. This allows you to demonstrate the differences between secure clean room analytics and traditional data sharing.
+This project includes automation scripts for setting up both **Data Clean Rooms (DCRs)** and standard **Data Exchanges (DCXs)** using BigQuery Analytics Hub.
 
-### Quick Setup
+### Data Clean Room (DCR) - Privacy-Preserving Sharing
+For sharing sensitive data with privacy controls. Subscribers can only run queries that comply with pre-defined analysis rules.
 
 ```bash
-python setup_ah_dcx.py \
-    --provider-project-id your-provider-project \
-    --merchant-project-id your-merchant-project \
-    --subscriber-email merchant-user@example.com
+uv run python setup_ah_dcr.py \
+    --sharing-project-id your-provider-project \
+    --subscriber-email merchant-user@example.com \
+    --dataset-to-share ewallet_provider \
+    --table-to-share provider_users \
+    --listing-id provider_users_listing \
+    --listing-display-name "DCR Provider Users Table" \
+    --exchange-id provider_dcr_exchange
 ```
 
-This script automates the creation of a data exchange, listing, and access permissions, enabling the merchant to directly access the provider's data through Analytics Hub.
+### Data Exchange (DCX) - Direct Data Access
+For trusted partnerships requiring direct access to datasets, such as collaborative ML model training.
 
-**📖 For detailed instructions, troubleshooting, and demo tips, see: [Analytics Hub Setup Guide](ah_dcx_readme.md)**
+```bash
+uv run python setup_ah_dcx.py \
+    --sharing-project-id your-merchant-project \
+    --subscriber-email provider-user@example.com \
+    --dataset-to-share merchant_provider \
+    --listing-id merchant_dataset_listing \
+    --listing-display-name "DCX Merchant Full Dataset" \
+    --exchange-id merchant_dcx_exchange
+```
+
+**📖 For complete setup instructions, prerequisites, all available options, and troubleshooting, see: [Analytics Hub Setup Guide](setup_ah_readme.md)**
 
 ## 6. Generated Schemas
 
