@@ -406,3 +406,141 @@ graph TB
 - Classify: Categorize with 150+ info types
 - Protect: Apply hashing + authorized views for external sharing
 - Analyze: Enable secure insights through analysis rules and differential privacy
+
+---
+
+## Slide 10: DWaaS - Deployment Decision
+
+**Title:** Alternative Deployment for Consumers Without BigQuery
+
+```mermaid
+graph TB
+    Question{"Does consumer have<br/>Google Cloud / BigQuery?"}
+
+    subgraph Standard["Standard Deployment"]
+        StdFlow["Consumer's GCP Project<br/><br/>✓ Consumer owns & manages<br/>✓ Consumer subscribes to listing<br/>✓ Full control"]
+    end
+
+    subgraph DWaaS["Provider-Managed (DWaaS)"]
+        DwaasFlow["Provider-Managed GCP Project<br/><br/>✓ Provider owns & manages<br/>✓ Provider subscribes for consumer<br/>✓ Turnkey solution"]
+    end
+
+    Question -->|"Yes"| Standard
+    Question -->|"No"| DWaaS
+
+    style Question fill:#fff9c4,stroke:#f57f17,stroke-width:3px
+    style Standard fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
+    style DWaaS fill:#ffccbc,stroke:#d84315,stroke-width:2px
+    style StdFlow fill:#ffffff,stroke:#388e3c,stroke-width:2px
+    style DwaasFlow fill:#ffffff,stroke:#d84315,stroke-width:2px
+```
+
+**Key Points:**
+
+**Use Standard Deployment when:**
+- Consumer has existing Google Cloud presence
+- Consumer wants full infrastructure control
+- Consumer manages own billing and governance
+
+**Use DWaaS when:**
+- Consumer has no Google Cloud environment
+- Consumer wants turnkey data access
+- Provider offers data as managed service (SaaS)
+- Provider needs to control costs and usage
+
+---
+
+## Slide 11: DWaaS - Integration with 6-Layer Hierarchy
+
+**Title:** Same Layers, Different Ownership
+
+```mermaid
+graph LR
+    subgraph Provider["Provider's Environment"]
+        L1["Layers 1-3:<br/>Data + Protection<br/>+ Access Control"]
+        L4P["Layer 4:<br/>Provider Dataset"]
+        L5["Layer 5:<br/>Analytics Hub<br/>Listing"]
+    end
+
+    subgraph Managed["Provider-Managed Project"]
+        L4M["Layer 4:<br/>Linked Dataset"]
+        L6["Layer 6:<br/>Consumer Analysis"]
+    end
+
+    subgraph Access["Consumer Access"]
+        Users["BigQuery Studio<br/>BigQuery API<br/>Looker Studio<br/>BI Tools"]
+    end
+
+    L1 --> L4P
+    L4P --> L5
+    L5 -->|"Provider subscribes<br/>on behalf of consumer"| L4M
+    L4M --> L6
+    L6 --> Users
+
+    style Provider fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style Managed fill:#ffccbc,stroke:#d84315,stroke-width:2px
+    style Access fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+```
+
+**Key Points:**
+- All 6 layers still apply in DWaaS deployment
+- Layers 1-5: Provider manages data preparation and sharing
+- Layer 6: Consumer performs analysis with same DCR/DCX controls
+- Only difference: Project ownership, not privacy controls
+
+---
+
+## Slide 12: DWaaS - Architecture & Components
+
+**Title:** Provider-Managed Projects Architecture
+
+```mermaid
+graph TB
+    subgraph ProviderOrg["Provider Organization"]
+        Source["Source Data<br/>(Layers 1-3 applied)"]
+        Listing["Analytics Hub<br/>Listing"]
+    end
+
+    subgraph ManagedProjects["Provider-Managed Projects"]
+        Proj1["Customer A<br/>Linked Dataset"]
+        Proj2["Customer B<br/>Linked Dataset"]
+        Proj3["Customer C<br/>Linked Dataset"]
+    end
+
+    subgraph Consumers["Consumer Access"]
+        User1["Customer A Users"]
+        User2["Customer B Users"]
+        User3["Customer C Users"]
+    end
+
+    Source --> Listing
+    Listing -->|"Provider subscribes"| Proj1
+    Listing -->|"Provider subscribes"| Proj2
+    Listing -->|"Provider subscribes"| Proj3
+
+    Proj1 --> User1
+    Proj2 --> User2
+    Proj3 --> User3
+
+    style ProviderOrg fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style ManagedProjects fill:#ffccbc,stroke:#d84315,stroke-width:2px
+    style Consumers fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+```
+
+**Key Components:**
+
+1. **Identity Management**
+   - Provider-managed: Google Workspace or federated identities
+   - Consumer-managed: Consumer provides their own accounts
+   - Service Accounts: For programmatic/API access
+
+2. **Data Sharing**
+   - Analytics Hub (DCX and DCR): Zero-copy with usage monitoring
+
+3. **Cost Control (3 Layers)**
+   - Monitoring: Billing budgets with alerts (50%, 75%, 90%)
+   - Quotas: BigQuery limits on data processed
+   - Automation: Auto-shutdown on overspending
+
+4. **Consumer Access**
+   - BigQuery Studio, API, BI tools (Tableau, Looker Studio)
