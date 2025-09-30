@@ -104,6 +104,59 @@ def create_data_clean_room(
             raise
 
 
+def create_hash_tvf(
+    sharing_project_id: str,
+    dataset_to_share: str,
+    routine_name: str
+) -> str:
+    """
+    Create the hash_tvf table-valued function for secure email hashing.
+
+    Args:
+        sharing_project_id: The GCP project ID of the party sharing the routine
+        dataset_to_share: The name of the dataset where the routine will be created
+        routine_name: The name of the routine (should be 'hash_tvf')
+
+    Returns:
+        The routine name created
+    """
+    from google.cloud import bigquery
+
+    if routine_name != "hash_tvf":
+        raise ValueError(
+            f"Only 'hash_tvf' routine is supported, got: {routine_name}")
+
+    client = bigquery.Client(project=sharing_project_id)
+    routine_id = f"{sharing_project_id}.{dataset_to_share}.{routine_name}"
+
+    # Check if routine already exists
+    try:
+        client.get_routine(routine_id)
+        print(f"⚠ Routine already exists: {routine_id}")
+        return routine_name
+    except:
+        pass
+
+    # Create the hash TVF
+    sql = f"""
+    CREATE OR REPLACE TABLE FUNCTION `{routine_id}`(
+      input_table TABLE<email STRING>
+    ) AS (
+      SELECT
+        email,
+        TO_BASE64(SHA256(CONCAT(email, 'DCR_DEMO_SHARED_SECRET_2024_SECURE_HASH_SALT'))) AS hashed_email
+      FROM
+        input_table
+    )
+    """
+
+    print(f"Creating hash TVF '{routine_name}' in {dataset_to_share}...")
+    client.query(sql).result()
+    print(f"✓ Hash TVF created: {dataset_to_share}.{routine_name}")
+
+    return routine_name
+
+
 def create_privacy_view(
     sharing_project_id: str,
     dataset_to_share: str,
@@ -234,51 +287,80 @@ def create_dcr_listing(
     listing_id: str,
     sharing_project_id: str,
     dataset_to_share: str,
-    table_to_share: str,
-    listing_display_name: str,
+    table_to_share: str = None,
+    routine_to_share: str = None,
+    listing_display_name: str = None,
     allow_egress: bool = False
 ) -> str:
     """
-    Create a BigQuery view listing with analysis rules within the Data Clean Room.
+    Create a BigQuery listing within the Data Clean Room.
 
     Args:
         client: The Analytics Hub service client
         exchange_name: The full resource name of the DCR
         listing_id: The unique ID for the listing
         sharing_project_id: The GCP project ID of the party sharing the data
-        dataset_to_share: The name of the dataset containing the table
-        table_to_share: The name of the specific table to share
+        dataset_to_share: The name of the dataset containing the resource
+        table_to_share: The name of the specific table to share (optional)
+        routine_to_share: The name of the specific routine to share (optional)
         listing_display_name: The display name for the listing
         allow_egress: If True, allows query results to be saved, enabling ML training.
 
     Returns:
         The full resource name of the created listing
     """
-    print(
-        f"Creating DCR listing '{listing_id}' for table '{dataset_to_share}.{table_to_share}'...")
+    # Determine what we're sharing
+    if routine_to_share:
+        print(
+            f"Creating DCR listing '{listing_id}' for routine '{dataset_to_share}.{routine_to_share}'...")
 
-    # Step 1: Create privacy-enforced view
-    view_name = create_privacy_view(
-        sharing_project_id, dataset_to_share, table_to_share, listing_id)
+        # Step 1: Create the routine if it's hash_tvf
+        routine_name = create_hash_tvf(
+            sharing_project_id, dataset_to_share, routine_to_share)
 
-    # Step 2: Share the view in the DCR listing
-    view_resource = f"projects/{sharing_project_id}/datasets/{dataset_to_share}/tables/{view_name}"
-    documentation = f"Privacy-enforced view for {table_to_share} table. Analysis rules automatically restrict queries to comply with privacy policies."
+        # Step 2: Share the routine in the DCR listing
+        routine_resource = f"projects/{sharing_project_id}/datasets/{dataset_to_share}/routines/{routine_name}"
+        documentation = f"Table-valued function for secure email hashing. Use this function to hash emails on-demand without exposing the salt."
+
+        selected_resources = [
+            types.Listing.BigQueryDatasetSource.SelectedResource(
+                routine=routine_resource
+            )
+        ]
+        resource_description = f"DCR listing with hash TVF for {dataset_to_share}.{routine_to_share}."
+
+    elif table_to_share:
+        print(
+            f"Creating DCR listing '{listing_id}' for table '{dataset_to_share}.{table_to_share}'...")
+
+        # Step 1: Create privacy-enforced view
+        view_name = create_privacy_view(
+            sharing_project_id, dataset_to_share, table_to_share, listing_id)
+
+        # Step 2: Share the view in the DCR listing
+        view_resource = f"projects/{sharing_project_id}/datasets/{dataset_to_share}/tables/{view_name}"
+        documentation = f"Privacy-enforced view for {table_to_share} table. Analysis rules automatically restrict queries to comply with privacy policies."
+
+        selected_resources = [
+            types.Listing.BigQueryDatasetSource.SelectedResource(
+                table=view_resource
+            )
+        ]
+        resource_description = f"DCR listing with analysis rules for {dataset_to_share}.{table_to_share}."
+    else:
+        raise ValueError(
+            "Either table_to_share or routine_to_share must be provided")
 
     try:
         # Construct the listing using the official 'types' objects
         listing = types.Listing(
             display_name=listing_display_name,
-            description=f"DCR listing with analysis rules for {dataset_to_share}.{table_to_share}.",
+            description=resource_description,
             primary_contact="data-sharing-admin@example.com",
             documentation=documentation,
             bigquery_dataset=types.Listing.BigQueryDatasetSource(
                 dataset=f"projects/{sharing_project_id}/datasets/{dataset_to_share}",
-                selected_resources=[
-                    types.Listing.BigQueryDatasetSource.SelectedResource(
-                        table=view_resource
-                    )
-                ]
+                selected_resources=selected_resources
             ),
             categories=[
                 types.Listing.Category.CATEGORY_FINANCIAL,
@@ -409,8 +491,14 @@ def main():
     parser.add_argument(
         "--table-to-share",
         type=str,
-        required=True,
+        required=False,
         help="The name of the specific table to share from the dataset."
+    )
+    parser.add_argument(
+        "--routine-to-share",
+        type=str,
+        required=False,
+        help="The name of the specific routine (function/TVF) to share from the dataset."
     )
     parser.add_argument(
         "--listing-display-name",
@@ -444,13 +532,25 @@ def main():
 
     args = parser.parse_args()
 
+    # Validate: exactly one of table_to_share or routine_to_share must be provided
+    if args.table_to_share and args.routine_to_share:
+        print("✗ ERROR: Cannot specify both --table-to-share and --routine-to-share")
+        sys.exit(1)
+
+    if not args.table_to_share and not args.routine_to_share:
+        print("✗ ERROR: Must specify either --table-to-share or --routine-to-share")
+        sys.exit(1)
+
     print("=" * 70)
     print("BigQuery Analytics Hub Setup - Bi-Directional Data Clean Room (DCR)")
     print("=" * 70)
     print(f"Sharing Project: {args.sharing_project_id}")
     print(f"Subscriber Email: {args.subscriber_email}")
     print(f"Dataset to Share: {args.dataset_to_share}")
-    print(f"Table to Share: {args.table_to_share}")
+    if args.table_to_share:
+        print(f"Table to Share: {args.table_to_share}")
+    if args.routine_to_share:
+        print(f"Routine to Share: {args.routine_to_share}")
     print(f"Location: {args.location}")
     print(f"Exchange ID: {args.exchange_id}")
     print(f"Listing ID: {args.listing_id}")
@@ -476,6 +576,7 @@ def main():
             sharing_project_id=args.sharing_project_id,
             dataset_to_share=args.dataset_to_share,
             table_to_share=args.table_to_share,
+            routine_to_share=args.routine_to_share,
             listing_display_name=args.listing_display_name,
             allow_egress=args.allow_egress
         )

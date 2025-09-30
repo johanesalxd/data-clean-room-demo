@@ -27,6 +27,15 @@
 --     --exchange-id provider_dcr_exchange
 
 -- uv run python setup_ah_dcr.py \
+--     --sharing-project-id provider-project-id \
+--     --subscriber-email merchant-email \
+--     --dataset-to-share ewallet_provider \
+--     --routine-to-share hash_tvf \
+--     --listing-id hash_tvf_listing \
+--     --listing-display-name "DCR Provider Hash TVF" \
+--     --exchange-id provider_dcr_exchange
+
+-- uv run python setup_ah_dcr.py \
 --     --sharing-project-id merchant-project-id \
 --     --subscriber-email provider-email \
 --     --dataset-to-share merchant_provider \
@@ -105,7 +114,7 @@ GROUP BY
 ORDER BY
   2 DESC;
 
--- Use Case 3 (Merchant POV)
+-- Use Case 3a (Merchant POV)
 -- This query counts the number of verified vs. unverified users
 -- who have made purchases. Results will only show if both groups
 -- meet the minimum threshold requirements.
@@ -126,6 +135,34 @@ JOIN
   `merchant-project-id.e_wallet_provider_data_clean_room.provider_users_listing_view` AS p
 ON
   u.hashed_email = p.hashed_email
+GROUP BY
+  1
+
+-- Use Case 3b with hash_tvf
+SELECT
+  u.*,
+  hashed.hashed_email
+FROM
+  `merchant-project-id.merchant_provider.users_temp` AS u
+INNER JOIN
+  `merchant-project-id.e_wallet_provider_data_clean_room.hash_tvf`( TABLE `merchant-project-id.merchant_provider.users_temp` ) AS hashed
+ON
+  u.email = hashed.email;
+  -----
+SELECT
+WITH
+  AGGREGATION_THRESHOLD OPTIONS(threshold=110) p.is_verified_user,
+  COUNT(DISTINCT u.id) AS number_of_customers
+FROM
+  `merchant-project-id.merchant_provider.users_temp` AS u
+CROSS JOIN
+  `merchant-project-id.e_wallet_provider_data_clean_room.hash_tvf`( TABLE `merchant-project-id.merchant_provider.users_temp` ) AS hashed
+JOIN
+  `merchant-project-id.e_wallet_provider_data_clean_room.provider_users_listing_view` AS p
+ON
+  hashed.hashed_email = p.hashed_email
+WHERE
+  u.email = hashed.email  -- Match back to original row
 GROUP BY
   1
 

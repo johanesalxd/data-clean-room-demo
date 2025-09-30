@@ -66,7 +66,8 @@ Use the `setup_ah_dcr.py` script to create a listing with privacy controls. Each
 | `--sharing-project-id` | ✅ | The GCP project ID of the party sharing the data. |
 | `--subscriber-email` | ✅ | Email of the data consumer. |
 | `--dataset-to-share` | ✅ | The dataset containing the table (`ewallet_provider` or `merchant_provider`). |
-| `--table-to-share` | ✅ | The specific table to share (e.g., `users`, `transactions`). |
+| `--table-to-share` | ⚠️ | The specific table to share (e.g., `users`, `transactions`). Either this OR `--routine-to-share` must be provided. |
+| `--routine-to-share` | ⚠️ | The specific routine/function to share (e.g., `hash_tvf`). Either this OR `--table-to-share` must be provided. |
 | `--listing-id` | ✅ | A unique ID for the listing (e.g., `provider_users_listing`). |
 | `--listing-display-name` | ✅ | The user-friendly display name for the listing. |
 | `--exchange-id` | ✅ | Unique ID for the data clean room (e.g., `provider_dcr_exchange`). |
@@ -97,6 +98,20 @@ uv run python setup_ah_dcr.py \
     --listing-display-name "DCR Merchant Users Table" \
     --exchange-id merchant_dcr_exchange
 ```
+
+**Example 3: Provider shares the `hash_tvf` routine with the Merchant (Best Practice)**
+```bash
+uv run python setup_ah_dcr.py \
+    --sharing-project-id your-provider-project-id \
+    --subscriber-email merchant-subscriber-email@example.com \
+    --dataset-to-share ewallet_provider \
+    --routine-to-share hash_tvf \
+    --listing-id hash_tvf_listing \
+    --listing-display-name "DCR Provider Hash TVF" \
+    --exchange-id provider_dcr_exchange
+```
+
+This shares a table-valued function that allows the merchant to hash their emails on-demand without storing hashed values or exposing the salt. The script automatically creates the `hash_tvf` function if it doesn't exist.
 
 ---
 
@@ -152,6 +167,55 @@ After a listing is created (either DCR or DCX), the subscriber must perform the 
 4.  **Query the Data**: You can now write queries against the tables in the newly created linked dataset.
     *   For **DCR listings**, your queries must comply with the analysis rules (e.g., use `SELECT WITH AGGREGATION_THRESHOLD`).
     *   For **DCX listings**, you can query the data directly without restrictions.
+
+### Example: Using hash_tvf in Queries (Use Case 3b)
+
+If you've subscribed to the `hash_tvf` listing, you can use it to hash your emails on-demand without pre-hashing your tables:
+
+**Step 1: Test the hash_tvf function**
+```sql
+-- Verify the hash_tvf works and see the hashed output
+SELECT
+  u.*,
+  hashed.hashed_email
+FROM
+  `merchant-project-id.merchant_provider.users_temp` AS u
+INNER JOIN
+  `merchant-project-id.e_wallet_provider_data_clean_room.hash_tvf`(
+    TABLE `merchant-project-id.merchant_provider.users_temp`
+  ) AS hashed
+ON
+  u.email = hashed.email;
+```
+
+**Step 2: Use hash_tvf in aggregation queries**
+```sql
+-- Count verified vs unverified users using the hash_tvf
+SELECT
+WITH
+  AGGREGATION_THRESHOLD OPTIONS(threshold=110) p.is_verified_user,
+  COUNT(DISTINCT u.id) AS number_of_customers
+FROM
+  `merchant-project-id.merchant_provider.users_temp` AS u
+CROSS JOIN
+  `merchant-project-id.e_wallet_provider_data_clean_room.hash_tvf`(
+    TABLE `merchant-project-id.merchant_provider.users_temp`
+  ) AS hashed
+JOIN
+  `merchant-project-id.e_wallet_provider_data_clean_room.provider_users_listing_view` AS p
+ON
+  hashed.hashed_email = p.hashed_email
+WHERE
+  u.email = hashed.email  -- Match back to original row
+GROUP BY
+  1
+```
+
+**Benefits of using hash_tvf:**
+- No need to store `hashed_email` columns in your tables
+- Salt remains hidden from the merchant
+- Provider controls the hashing logic and can rotate the salt
+- All hashing happens within BigQuery (no data egress)
 
 ## 5. Cleanup
 
