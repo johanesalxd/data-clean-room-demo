@@ -4,7 +4,17 @@ This project contains a Python script to generate synthetic data for a BigQuery 
 
 The script first creates a clean, isolated snapshot of source data from `bigquery-public-data.thelook_ecommerce` into your own GCP project. It then uses this clean snapshot to generate the synthetic provider data. This ensures the demo is reproducible and resilient to changes in the public dataset.
 
-## 1. Architecture: A Two-Step Process
+## 1. BigQuery Data Sharing Hierarchy
+
+For understanding BigQuery's data sharing mechanisms and protection strategies, see the [BigQuery Data Sharing Hierarchy Slides](bigquery_hierarchy_slides.md). This presentation covers:
+
+- Complete hierarchy from columns to Data Clean Rooms
+- Integration of DLP, DDM, hashing, and encryption
+- DCPA lifecycle (Discover, Classify, Protect, Analyze)
+- When to use DCX vs DCR
+- Real-world implementation guidance
+
+## 2. Architecture: Two-Step Data Generation
 
 The data generation pipeline is a two-step process designed for robustness and data integrity.
 
@@ -52,7 +62,7 @@ graph TD
     PublicOrderItems --> SnapshotOrderItems
 ```
 
-## 2. Data Clean Room Use Cases (Analytics)
+## 3. Data Clean Room Use Cases (Analytics)
 
 This simulation enables several powerful analytics use cases. All example queries should be run against the tables created in **your own GCP project**.
 
@@ -159,7 +169,7 @@ The **e-wallet provider** wants to learn more about their customers who shop at 
 
 ---
 
-## 3. Advanced Use Case: Collaborative ML with BQML
+## 4. Advanced Use Case: Collaborative ML with BQML
 
 This section demonstrates a realistic and powerful machine learning use case where the **e-wallet provider** leverages the **merchant's** rich demographic data to build a more accurate predictive model than they could alone.
 
@@ -255,7 +265,7 @@ This section demonstrates a realistic and powerful machine learning use case whe
       );
     ```
 
-## 4. How to Run
+## 5. How to Run
 
 ### Prerequisites
 
@@ -310,7 +320,7 @@ This is expected and demonstrates a real-world data quality issue: the source `t
 
 This discrepancy serves as an excellent talking point during demos, highlighting the importance of robust data preparation and quality checks in data clean room implementations.
 
-## 5. Analytics Hub Setup
+## 6. Analytics Hub Setup
 
 This project includes automation scripts for setting up both **Data Clean Rooms (DCRs)** and standard **Data Exchanges (DCXs)** using BigQuery Analytics Hub.
 
@@ -343,7 +353,7 @@ uv run python setup_ah_dcx.py \
 
 **📖 For complete setup instructions, prerequisites, all available options, and troubleshooting, see: [Analytics Hub Setup Guide](setup_ah_readme.md)**
 
-## 6. Generated Schemas
+## 7. Generated Schemas
 
 The script creates tables in two datasets across your separate GCP projects.
 
